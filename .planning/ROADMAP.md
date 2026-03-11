@@ -7,7 +7,7 @@ The roadmap starts with a monorepo foundation that gets the lead engine, Monday 
 ## Phases
 
 - [x] **Phase 1: Foundation Scaffold** - Create the monorepo, service stubs, CI/CD, and pilot docs.
-- [ ] **Phase 2: Reaper Integration** - Replace lead-engine stubs with real scan orchestration and data flow.
+- [x] **Phase 2: Reaper Integration** - Replace lead-engine stubs with real scan orchestration and data flow.
 - [ ] **Phase 3: Monday Delivery Flow** - Add board mapping, duplicate handling, and lead push workflows.
 - [ ] **Phase 4: Pilot Operations** - Harden onboarding, logging, and pilot execution for real customer use.
 
@@ -39,8 +39,8 @@ Plans:
 
 Plans:
 - [x] 02-01: Define the internal lead contract and minimal durable Monday state.
-- [ ] 02-02: Implement the real `/run-scan` path in lead-engine.
-- [ ] 02-03: Wire Monday board discovery, board selection, and lead item creation in crm-adapter.
+- [x] 02-02: Implement the real `/run-scan` path in lead-engine.
+- [x] 02-03: Wire Monday board discovery, board selection, and lead item creation in crm-adapter.
 
 ### Phase 3: Monday Delivery Flow
 **Goal**: Turn the CRM adapter into a working lead delivery pipeline with board mapping and duplicate handling.
@@ -65,6 +65,6 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation Scaffold | 3/3 | Complete | 2026-03-11 |
-| 2. Reaper Integration | 1/3 | In progress | - |
+| 2. Reaper Integration | 3/3 | Complete | 2026-03-11 |
 | 3. Monday Delivery Flow | 0/TBD | Not started | - |
 | 4. Pilot Operations | 0/TBD | Not started | - |

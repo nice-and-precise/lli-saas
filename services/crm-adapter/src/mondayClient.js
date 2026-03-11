@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { CREATE_ITEM_MUTATION, LIST_BOARDS_QUERY } = require("./queries");
 
 function wait(ms, sleep = setTimeout) {
   return new Promise((resolve) => sleep(resolve, ms));
@@ -73,6 +74,14 @@ class MondayClient {
           throw new Error(`Monday API request failed with status ${response.status}`);
         }
 
+        if (Array.isArray(response.data?.errors) && response.data.errors.length > 0) {
+          const message = response.data.errors
+            .map((error) => error.message)
+            .filter(Boolean)
+            .join("; ");
+          throw new Error(message || "Monday API returned GraphQL errors");
+        }
+
         return response.data;
       } catch (error) {
         const status = error.response?.status;
@@ -89,10 +98,31 @@ class MondayClient {
 
     throw new Error("Monday API rate limit exceeded after 3 attempts");
   }
+
+  async listBoards(token) {
+    const response = await this.executeGraphQL({
+      query: LIST_BOARDS_QUERY,
+      token,
+    });
+
+    return response.data?.boards ?? [];
+  }
+
+  async createItem({ token, boardId, itemName }) {
+    const response = await this.executeGraphQL({
+      query: CREATE_ITEM_MUTATION,
+      variables: {
+        boardId,
+        itemName,
+      },
+      token,
+    });
+
+    return response.data?.create_item ?? null;
+  }
 }
 
 module.exports = {
   MondayClient,
   wait,
 };
-

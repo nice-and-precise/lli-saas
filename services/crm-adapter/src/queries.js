@@ -1,5 +1,5 @@
 const LIST_BOARDS_QUERY = `
-  query {
+  query ListBoards {
     boards {
       id
       name
@@ -12,8 +12,8 @@ const LIST_BOARDS_QUERY = `
 `;
 
 const CREATE_ITEM_MUTATION = `
-  mutation CreateItem($BOARD_ID: ID!) {
-    create_item(board_id: $BOARD_ID, item_name: "Deceased Name") {
+  mutation CreateItem($boardId: ID!, $itemName: String!) {
+    create_item(board_id: $boardId, item_name: $itemName) {
       id
     }
   }
@@ -23,4 +23,3 @@ module.exports = {
   LIST_BOARDS_QUERY,
   CREATE_ITEM_MUTATION,
 };
-

@@ -1,17 +1,14 @@
+const fs = require("fs");
 const path = require("path");
 
-const INTERNAL_LEAD_SCHEMA_PATH = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "shared",
-  "contracts",
-  "internal-lead.schema.json",
-);
+const INTERNAL_LEAD_SCHEMA_PATH_CANDIDATES = [
+  path.resolve(__dirname, "..", "..", "..", "shared", "contracts", "internal-lead.schema.json"),
+  path.resolve(__dirname, "..", "..", "shared", "contracts", "internal-lead.schema.json"),
+];
 
 function getInternalLeadSchemaPath() {
-  return INTERNAL_LEAD_SCHEMA_PATH;
+  const existingPath = INTERNAL_LEAD_SCHEMA_PATH_CANDIDATES.find((candidate) => fs.existsSync(candidate));
+  return existingPath ?? INTERNAL_LEAD_SCHEMA_PATH_CANDIDATES[0];
 }
 
 function assertNonEmptyString(value, field) {
@@ -63,7 +60,36 @@ function validateInternalLead(lead) {
   return lead;
 }
 
+function mapInternalLeadToMondayItem(lead) {
+  validateInternalLead(lead);
+
+  const address = [
+    lead.property.address_line_1,
+    lead.property.city,
+    lead.property.state,
+    lead.property.postal_code,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const itemName = `${lead.deceased_name} - ${lead.property.address_line_1}`.trim();
+
+  return {
+    itemName,
+    summary: {
+      deceased_name: lead.deceased_name,
+      owner_name: lead.owner_name,
+      property_address: address,
+      contact_count: lead.contacts.length,
+      tags: lead.tags,
+      scan_id: lead.scan_id,
+      source: lead.source,
+    },
+  };
+}
+
 module.exports = {
   getInternalLeadSchemaPath,
+  mapInternalLeadToMondayItem,
   validateInternalLead,
 };

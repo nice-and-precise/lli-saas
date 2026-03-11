@@ -5,6 +5,37 @@ const path = require("path");
 const { createApp } = require("../src/app");
 const { FileTokenStore } = require("../src/tokenStore");
 
+function buildLead(overrides = {}) {
+  return {
+    scan_id: "scan-1",
+    source: "reaper",
+    run_started_at: "2026-03-11T10:00:00Z",
+    run_completed_at: "2026-03-11T10:01:00Z",
+    owner_name: "Jordan Example",
+    deceased_name: "Pat Example",
+    property: {
+      address_line_1: "123 County Road",
+      city: "Austin",
+      state: "TX",
+      postal_code: "78701",
+      county: "Travis",
+    },
+    contacts: [
+      {
+        name: "Casey Example",
+        relationship: "heir",
+        phone: "555-0100",
+        email: "casey@example.com",
+        mailing_address: "PO Box 1",
+      },
+    ],
+    notes: ["pilot-ready"],
+    tags: ["inheritance"],
+    raw_artifacts: ["artifact-1.json"],
+    ...overrides,
+  };
+}
+
 describe("crm-adapter auth routes", () => {
   it("redirects to Monday OAuth on /auth/login", async () => {
     const mondayClient = {
@@ -77,5 +108,142 @@ describe("crm-adapter auth routes", () => {
     expect(response.statusCode).toBe(200);
     expect(state.tokens.monday_access_token).toBe("token-123");
     expect(state.account_id).toBe("acct-1");
+  });
+
+  it("lists boards using the persisted OAuth token", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        { id: "board-1", name: "Leads", columns: [{ id: "name", title: "Name" }] },
+      ]),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-boards-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      account_id: "acct-1",
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).get("/boards");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      boards: [{ id: "board-1", name: "Leads", columns: [{ id: "name", title: "Name" }] }],
+      selected_board: null,
+    });
+    expect(mondayClient.listBoards).toHaveBeenCalledWith("token-123");
+  });
+
+  it("persists the selected board from discovered boards", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        { id: "board-1", name: "Leads", columns: [{ id: "name", title: "Name" }] },
+        { id: "board-2", name: "Archive", columns: [] },
+      ]),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-board-select-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/boards/select").send({ board_id: "board-1" });
+    const state = await tokenStore.getState();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.selected_board).toEqual({
+      id: "board-1",
+      name: "Leads",
+      columns: [{ id: "name", title: "Name" }],
+    });
+    expect(state.board).toEqual({
+      id: "board-1",
+      name: "Leads",
+      columns: [{ id: "name", title: "Name" }],
+    });
+  });
+
+  it("creates a Monday item from the internal lead contract on the selected board", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      createItem: vi.fn(async () => ({ id: "item-123" })),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-leads-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/leads").send(buildLead());
+
+    expect(response.statusCode).toBe(201);
+    expect(response.body).toEqual({
+      board_id: "board-1",
+      item_id: "item-123",
+      item_name: "Pat Example - 123 County Road",
+      lead: {
+        deceased_name: "Pat Example",
+        owner_name: "Jordan Example",
+        property_address: "123 County Road, Austin, TX, 78701",
+        contact_count: 1,
+        tags: ["inheritance"],
+        scan_id: "scan-1",
+        source: "reaper",
+      },
+    });
+    expect(mondayClient.createItem).toHaveBeenCalledWith({
+      token: "token-123",
+      boardId: "board-1",
+      itemName: "Pat Example - 123 County Road",
+    });
+  });
+
+  it("rejects malformed internal lead payloads before Monday item creation", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      createItem: vi.fn(async () => ({ id: "item-123" })),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-invalid-leads-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/leads").send({
+      scan_id: "",
+      property: {},
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({
+      error: "Invalid internal lead field: scan_id",
+    });
+    expect(mondayClient.createItem).not.toHaveBeenCalled();
   });
 });

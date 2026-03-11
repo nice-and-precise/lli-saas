@@ -4,15 +4,62 @@ const path = require("path");
 class MemoryTokenStore {
   constructor() {
     this.tokens = new Map();
+    this.state = {
+      tokens: {},
+      board: null,
+      account_id: null,
+      updated_at: null,
+    };
   }
 
   async save(key, token) {
     this.tokens.set(key, token);
+    this.state.tokens[key] = token;
+    this.state.updated_at = new Date().toISOString();
     return token;
   }
 
   async get(key) {
     return this.tokens.get(key) ?? null;
+  }
+
+  async saveState(partialState) {
+    const nextBoard =
+      partialState.board === null
+        ? null
+        : partialState.board
+          ? {
+              ...(this.state.board ?? {}),
+              ...partialState.board,
+            }
+          : this.state.board;
+
+    this.state = {
+      ...this.state,
+      ...partialState,
+      tokens: {
+        ...this.state.tokens,
+        ...(partialState.tokens ?? {}),
+      },
+      board: nextBoard,
+      account_id: partialState.account_id ?? this.state.account_id ?? null,
+      updated_at: new Date().toISOString(),
+    };
+
+    Object.entries(this.state.tokens).forEach(([key, value]) => {
+      this.tokens.set(key, value);
+    });
+
+    return this.state;
+  }
+
+  async getState() {
+    return {
+      tokens: { ...this.state.tokens },
+      board: this.state.board ? { ...this.state.board } : null,
+      account_id: this.state.account_id,
+      updated_at: this.state.updated_at,
+    };
   }
 }
 
@@ -37,6 +84,15 @@ class FileTokenStore {
 
   async saveState(partialState) {
     const state = await this.getState();
+    const nextBoard =
+      partialState.board === null
+        ? null
+        : partialState.board
+          ? {
+              ...(state.board ?? {}),
+              ...partialState.board,
+            }
+          : state.board;
     const nextState = {
       ...state,
       ...partialState,
@@ -44,10 +100,7 @@ class FileTokenStore {
         ...state.tokens,
         ...(partialState.tokens ?? {}),
       },
-      board: {
-        ...state.board,
-        ...(partialState.board ?? {}),
-      },
+      board: nextBoard,
       account_id: partialState.account_id ?? state.account_id ?? null,
       updated_at: new Date().toISOString(),
     };

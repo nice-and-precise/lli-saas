@@ -62,4 +62,63 @@ describe("MondayClient", () => {
     ).rejects.toThrow("Monday API rate limit exceeded after 3 attempts");
     expect(post).toHaveBeenCalledTimes(3);
   });
+
+  it("lists boards from the GraphQL response", async () => {
+    const post = vi.fn().mockResolvedValue({
+      status: 200,
+      data: {
+        data: {
+          boards: [{ id: "123", name: "Leads", columns: [{ id: "name", title: "Name" }] }],
+        },
+      },
+      headers: {},
+    });
+    const client = new MondayClient({
+      clientId: "client-id",
+      clientSecret: "secret",
+      redirectUri: "http://localhost:3000/auth/callback",
+      httpClient: { post },
+    });
+
+    await expect(client.listBoards("token-123")).resolves.toEqual([
+      { id: "123", name: "Leads", columns: [{ id: "name", title: "Name" }] },
+    ]);
+  });
+
+  it("creates an item with GraphQL variables", async () => {
+    const post = vi.fn().mockResolvedValue({
+      status: 200,
+      data: {
+        data: {
+          create_item: { id: "item-1" },
+        },
+      },
+      headers: {},
+    });
+    const client = new MondayClient({
+      clientId: "client-id",
+      clientSecret: "secret",
+      redirectUri: "http://localhost:3000/auth/callback",
+      httpClient: { post },
+    });
+
+    await expect(
+      client.createItem({
+        token: "token-123",
+        boardId: "board-1",
+        itemName: "Pat Example - 123 County Road",
+      }),
+    ).resolves.toEqual({ id: "item-1" });
+
+    expect(post).toHaveBeenCalledWith(
+      "https://api.monday.com/v2",
+      expect.objectContaining({
+        variables: {
+          boardId: "board-1",
+          itemName: "Pat Example - 123 County Road",
+        },
+      }),
+      expect.any(Object),
+    );
+  });
 });

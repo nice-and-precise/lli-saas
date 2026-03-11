@@ -1,4 +1,5 @@
 const express = require("express");
+const { getInternalLeadSchemaPath } = require("./internalLead");
 const { MondayClient } = require("./mondayClient");
 const { MemoryTokenStore } = require("./tokenStore");
 
@@ -18,6 +19,10 @@ function createApp(options = {}) {
     res.json({ status: "ok", service: "crm-adapter" });
   });
 
+  app.get("/contract", (_req, res) => {
+    res.json({ contract_path: getInternalLeadSchemaPath() });
+  });
+
   app.get("/auth/login", (req, res) => {
     const state = req.query.state || "lli-saas-state";
     const location = mondayClient.getAuthorizationUrl(state);
@@ -33,6 +38,14 @@ function createApp(options = {}) {
 
     const tokenPayload = await mondayClient.exchangeCodeForToken(code);
     await tokenStore.save("monday_access_token", tokenPayload.access_token);
+    if (typeof tokenStore.saveState === "function") {
+      await tokenStore.saveState({
+        tokens: {
+          monday_access_token: tokenPayload.access_token,
+        },
+        account_id: tokenPayload.account_id ?? null,
+      });
+    }
 
     return res.json({
       connected: true,
@@ -46,4 +59,3 @@ function createApp(options = {}) {
 module.exports = {
   createApp,
 };
-

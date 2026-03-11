@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lli-saas.local/contracts/internal-lead.schema.json",
+  "title": "InternalLead",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scan_id",
+    "source",
+    "run_started_at",
+    "run_completed_at",
+    "owner_name",
+    "deceased_name",
+    "property",
+    "contacts",
+    "notes",
+    "tags",
+    "raw_artifacts"
+  ],
+  "properties": {
+    "scan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "run_completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "owner_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deceased_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "property": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "address_line_1",
+        "city",
+        "state",
+        "postal_code",
+        "county"
+      ],
+      "properties": {
+        "address_line_1": {
+          "type": "string",
+          "minLength": 1
+        },
+        "city": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "type": "string",
+          "minLength": 1
+        },
+        "postal_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "county": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "contacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "relationship",
+          "phone",
+          "email",
+          "mailing_address"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "relationship": {
+            "type": "string",
+            "minLength": 1
+          },
+          "phone": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "mailing_address": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "raw_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

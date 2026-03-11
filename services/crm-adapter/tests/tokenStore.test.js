@@ -2,7 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { FileTokenStore } = require("../src/tokenStore");
+const { createDefaultMapping, DEFAULT_TENANT_ID, FileTokenStore } = require("../src/tokenStore");
 
 describe("FileTokenStore", () => {
   it("persists tokens and board state to disk", async () => {
@@ -25,5 +25,39 @@ describe("FileTokenStore", () => {
       name: "Leads",
     });
     await expect(store.get("monday_access_token")).resolves.toBe("token-123");
+  });
+
+  it("persists tenant-aware mapping and delivery state", async () => {
+    const filePath = path.join(os.tmpdir(), `lli-saas-tenant-state-${Date.now()}.json`);
+    const store = new FileTokenStore({ filePath });
+
+    await store.saveTenantState(DEFAULT_TENANT_ID, {
+      board_mapping: {
+        item_name_strategy: "deceased_name_only",
+        columns: {
+          deceased_name: "name",
+          owner_name: "owner_column",
+        },
+      },
+      scan_runs: [{ scan_id: "scan-1", status: "completed" }],
+      deliveries: [{ delivery_id: "delivery-1", status: "created" }],
+    });
+
+    const state = await store.getState();
+    const tenantState = await store.getTenantState(DEFAULT_TENANT_ID);
+
+    expect(state.active_tenant_id).toBe(DEFAULT_TENANT_ID);
+    expect(tenantState.board_mapping).toEqual({
+      item_name_strategy: "deceased_name_only",
+      columns: {
+        deceased_name: "name",
+        owner_name: "owner_column",
+        property_address: createDefaultMapping().columns.property_address,
+        contact_count: createDefaultMapping().columns.contact_count,
+        tags: createDefaultMapping().columns.tags,
+      },
+    });
+    expect(tenantState.scan_runs).toEqual([{ scan_id: "scan-1", status: "completed" }]);
+    expect(tenantState.deliveries).toEqual([{ delivery_id: "delivery-1", status: "created" }]);
   });
 });

@@ -1,6 +1,6 @@
 # crm-adapter
 
-Express adapter for Monday OAuth, board discovery, board selection persistence, and lead delivery for `lli-saas`.
+Express adapter for Monday OAuth, board discovery, board mapping, tenant-aware delivery state, and lead delivery for `lli-saas`.
 
 ## Commands
 
@@ -17,7 +17,7 @@ Express adapter for Monday OAuth, board discovery, board selection persistence, 
 - `MONDAY_API_BASE_URL` (optional, defaults to `https://api.monday.com/v2`)
 - `PORT` (optional, defaults to `3000`)
 
-The adapter persists Monday OAuth and selected board state in `data/monday-state.json` by default.
+The adapter persists tenant-aware Monday OAuth, selected board, board mapping, scan runs, and delivery state in `data/monday-state.json` by default.
 
 ## Routes
 
@@ -25,7 +25,13 @@ The adapter persists Monday OAuth and selected board state in `data/monday-state
 - `GET /auth/callback?code=...` exchanges the OAuth code and persists token state.
 - `GET /boards` discovers boards using the persisted OAuth token.
 - `POST /boards/select` with `{ "board_id": "..." }` persists the selected board metadata.
+- `GET /mapping` returns the persisted board mapping for the selected board.
+- `PUT /mapping` persists a focused board mapping model for the selected board.
 - `POST /leads` validates the shared internal lead contract and creates one item on the selected board.
+
+Optional request header:
+
+- `x-tenant-id` selects a tenant-scoped state bucket. Defaults to `pilot`.
 
 Example lead payload:
 

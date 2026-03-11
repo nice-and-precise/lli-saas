@@ -1,11 +1,42 @@
 const express = require("express");
-const { getInternalLeadSchemaPath, mapInternalLeadToMondayItem } = require("./internalLead");
+const {
+  getInternalLeadSchemaPath,
+  mapInternalLeadToMondayItem,
+  validateBoardMapping,
+} = require("./internalLead");
 const { MondayClient } = require("./mondayClient");
-const { FileTokenStore } = require("./tokenStore");
+const { createDefaultMapping, DEFAULT_TENANT_ID, FileTokenStore } = require("./tokenStore");
 
-async function getPersistedState(tokenStore) {
+async function getPersistedState(tokenStore, tenantId = DEFAULT_TENANT_ID) {
   if (typeof tokenStore.getState === "function") {
-    return tokenStore.getState();
+    const state = await tokenStore.getState();
+    const tenantState =
+      typeof tokenStore.getTenantState === "function"
+        ? await tokenStore.getTenantState(tenantId)
+        : {
+            oauth: {
+              access_token: state.tokens?.monday_access_token ?? null,
+              account_id: state.account_id ?? null,
+            },
+            selected_board: state.board ?? null,
+            board_mapping: state.board_mapping ?? createDefaultMapping(),
+            scan_runs: state.scan_runs ?? [],
+            deliveries: state.deliveries ?? [],
+            tenant_id: tenantId,
+          };
+
+    return {
+      ...state,
+      tenant_id: tenantId,
+      tokens: {
+        monday_access_token: tenantState.oauth?.access_token ?? state.tokens?.monday_access_token ?? null,
+      },
+      account_id: tenantState.oauth?.account_id ?? state.account_id ?? null,
+      board: tenantState.selected_board ?? state.board ?? null,
+      board_mapping: tenantState.board_mapping ?? state.board_mapping ?? createDefaultMapping(),
+      scan_runs: tenantState.scan_runs ?? state.scan_runs ?? [],
+      deliveries: tenantState.deliveries ?? state.deliveries ?? [],
+    };
   }
 
   const token =
@@ -15,8 +46,21 @@ async function getPersistedState(tokenStore) {
     tokens: token ? { monday_access_token: token } : {},
     board: null,
     account_id: null,
+    board_mapping: createDefaultMapping(),
+    scan_runs: [],
+    deliveries: [],
     updated_at: null,
+    tenant_id: tenantId,
   };
+}
+
+function getTenantId(req) {
+  const tenantId = req.headers["x-tenant-id"];
+  if (typeof tenantId === "string" && tenantId.trim() !== "") {
+    return tenantId.trim();
+  }
+
+  return DEFAULT_TENANT_ID;
 }
 
 function createApp(options = {}) {
@@ -72,7 +116,8 @@ function createApp(options = {}) {
   });
 
   app.get("/boards", async (_req, res) => {
-    const state = await getPersistedState(tokenStore);
+    const tenantId = getTenantId(_req);
+    const state = await getPersistedState(tokenStore, tenantId);
     const token = state.tokens?.monday_access_token ?? null;
 
     if (!token) {
@@ -84,17 +129,19 @@ function createApp(options = {}) {
     return res.json({
       boards,
       selected_board: state.board ?? null,
+      tenant_id: tenantId,
     });
   });
 
   app.post("/boards/select", async (req, res) => {
+    const tenantId = getTenantId(req);
     const { board_id: boardId } = req.body ?? {};
 
     if (typeof boardId !== "string" || boardId.trim() === "") {
       return res.status(400).json({ error: "board_id is required" });
     }
 
-    const state = await getPersistedState(tokenStore);
+    const state = await getPersistedState(tokenStore, tenantId);
     const token = state.tokens?.monday_access_token ?? null;
 
     if (!token) {
@@ -108,7 +155,7 @@ function createApp(options = {}) {
       return res.status(404).json({ error: "Board not found" });
     }
 
-    const persistedState = await tokenStore.saveState({
+    const persistedState = await tokenStore.saveTenantState(tenantId, {
       board: {
         id: String(selectedBoard.id),
         name: selectedBoard.name,
@@ -118,11 +165,53 @@ function createApp(options = {}) {
 
     return res.json({
       selected_board: persistedState.board,
+      tenant_id: tenantId,
+    });
+  });
+
+  app.get("/mapping", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const state = await getPersistedState(tokenStore, tenantId);
+
+    if (!state.board?.id) {
+      return res.status(409).json({ error: "Monday board not selected" });
+    }
+
+    return res.json({
+      tenant_id: tenantId,
+      board_id: state.board.id,
+      mapping: state.board_mapping ?? createDefaultMapping(),
+    });
+  });
+
+  app.put("/mapping", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const state = await getPersistedState(tokenStore, tenantId);
+
+    if (!state.board?.id) {
+      return res.status(409).json({ error: "Monday board not selected" });
+    }
+
+    try {
+      validateBoardMapping(req.body);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    const persistedState = await tokenStore.saveTenantState(tenantId, {
+      board_mapping: req.body,
+    });
+
+    return res.json({
+      tenant_id: tenantId,
+      board_id: state.board.id,
+      mapping: persistedState.board_mapping,
     });
   });
 
   app.post("/leads", async (req, res) => {
-    const state = await getPersistedState(tokenStore);
+    const tenantId = getTenantId(req);
+    const state = await getPersistedState(tokenStore, tenantId);
     const token = state.tokens?.monday_access_token ?? null;
 
     if (!token) {
@@ -148,6 +237,7 @@ function createApp(options = {}) {
     });
 
     return res.status(201).json({
+      tenant_id: tenantId,
       board_id: state.board.id,
       item_id: createdItem?.id ?? null,
       item_name: mappedLead.itemName,
@@ -160,4 +250,5 @@ function createApp(options = {}) {
 
 module.exports = {
   createApp,
+  getPersistedState,
 };

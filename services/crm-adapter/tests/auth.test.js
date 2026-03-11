@@ -134,6 +134,7 @@ describe("crm-adapter auth routes", () => {
     expect(response.body).toEqual({
       boards: [{ id: "board-1", name: "Leads", columns: [{ id: "name", title: "Name" }] }],
       selected_board: null,
+      tenant_id: "pilot",
     });
     expect(mondayClient.listBoards).toHaveBeenCalledWith("token-123");
   });
@@ -165,11 +166,96 @@ describe("crm-adapter auth routes", () => {
       name: "Leads",
       columns: [{ id: "name", title: "Name" }],
     });
+    expect(response.body.tenant_id).toBe("pilot");
     expect(state.board).toEqual({
       id: "board-1",
       name: "Leads",
       columns: [{ id: "name", title: "Name" }],
     });
+  });
+
+  it("returns persisted board mapping for the selected board", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-mapping-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).get("/mapping");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      tenant_id: "pilot",
+      board_id: "board-1",
+      mapping: {
+        item_name_strategy: "deceased_name_address",
+        columns: {
+          deceased_name: "name",
+          owner_name: "text",
+          property_address: "text",
+          contact_count: "numbers",
+          tags: "text",
+        },
+      },
+    });
+  });
+
+  it("persists updated board mapping", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-mapping-save-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).put("/mapping").send({
+      item_name_strategy: "deceased_name_only",
+      columns: {
+        deceased_name: "name",
+        owner_name: "owner_column",
+      },
+    });
+    const tenantState = await tokenStore.getTenantState("pilot");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      tenant_id: "pilot",
+      board_id: "board-1",
+      mapping: {
+        item_name_strategy: "deceased_name_only",
+        columns: {
+          deceased_name: "name",
+          owner_name: "owner_column",
+          property_address: "text",
+          contact_count: "numbers",
+          tags: "text",
+        },
+      },
+    });
+    expect(tenantState.board_mapping.item_name_strategy).toBe("deceased_name_only");
   });
 
   it("creates a Monday item from the internal lead contract on the selected board", async () => {
@@ -196,6 +282,7 @@ describe("crm-adapter auth routes", () => {
 
     expect(response.statusCode).toBe(201);
     expect(response.body).toEqual({
+      tenant_id: "pilot",
       board_id: "board-1",
       item_id: "item-123",
       item_name: "Pat Example - 123 County Road",
@@ -245,5 +332,35 @@ describe("crm-adapter auth routes", () => {
       error: "Invalid internal lead field: scan_id",
     });
     expect(mondayClient.createItem).not.toHaveBeenCalled();
+  });
+
+  it("separates persisted state by tenant id", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [{ id: "board-2", name: "Tenant 2 Board", columns: [] }]),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-tenant-split-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", {
+      oauth: { access_token: "pilot-token", account_id: "pilot-account" },
+      selected_board: { id: "board-1", name: "Pilot Board", columns: [] },
+    });
+    await tokenStore.saveTenantState("tenant-2", {
+      oauth: { access_token: "tenant-2-token", account_id: "tenant-2-account" },
+      selected_board: { id: "board-2", name: "Tenant 2 Board", columns: [] },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).get("/boards").set("x-tenant-id", "tenant-2");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.selected_board).toEqual({
+      id: "board-2",
+      name: "Tenant 2 Board",
+      columns: [],
+    });
+    expect(response.body.tenant_id).toBe("tenant-2");
+    expect(mondayClient.listBoards).toHaveBeenCalledWith("tenant-2-token");
   });
 });

@@ -88,8 +88,28 @@ function mapInternalLeadToMondayItem(lead) {
   };
 }
 
+function validateBoardMapping(mapping) {
+  if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
+    throw new Error("Invalid board mapping payload");
+  }
+
+  assertNonEmptyString(mapping.item_name_strategy, "item_name_strategy");
+
+  if (!mapping.columns || typeof mapping.columns !== "object" || Array.isArray(mapping.columns)) {
+    throw new Error("Invalid board mapping field: columns");
+  }
+
+  Object.entries(mapping.columns).forEach(([field, columnId]) => {
+    assertNonEmptyString(field, `columns.${field}.field`);
+    assertNonEmptyString(columnId, `columns.${field}`);
+  });
+
+  return mapping;
+}
+
 module.exports = {
   getInternalLeadSchemaPath,
   mapInternalLeadToMondayItem,
+  validateBoardMapping,
   validateInternalLead,
 };

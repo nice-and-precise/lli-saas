@@ -28,6 +28,8 @@ The adapter persists tenant-aware Monday OAuth, selected board, board mapping, s
 - `GET /mapping` returns the persisted board mapping for the selected board.
 - `PUT /mapping` persists a focused board mapping model for the selected board.
 - `GET /deliveries` returns persisted delivery attempts and scan run status for the active tenant.
+- `GET /status` returns the current board, mapping, delivery, and scan snapshot for the active tenant.
+- `POST /first-scan` runs `lead-engine` scan execution and delivers returned leads through the adapter workflow.
 - `POST /leads` validates the shared internal lead contract, checks for duplicates on the selected board, and records created, skipped, or failed delivery outcomes.
 
 Optional request header:

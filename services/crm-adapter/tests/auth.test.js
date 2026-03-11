@@ -407,6 +407,97 @@ describe("crm-adapter auth routes", () => {
     expect(deliveriesResponse.body.scan_runs[0].scan_id).toBe("scan-1");
   });
 
+  it("returns operator-ready status state", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-status-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", {
+      oauth: { access_token: "token-123", account_id: "acct-1" },
+      selected_board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name" }],
+      },
+      deliveries: [{ id: "delivery-1", status: "created" }],
+      scan_runs: [{ scan_id: "scan-1", last_delivery_status: "created" }],
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).get("/status");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.board.id).toBe("board-1");
+    expect(response.body.latest_delivery.id).toBe("delivery-1");
+    expect(response.body.scan_runs[0].scan_id).toBe("scan-1");
+  });
+
+  it("runs the first scan flow and returns delivery totals", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi.fn(async () => []),
+      createItem: vi.fn(async ({ itemName }) => ({ id: `${itemName}-id` })),
+    };
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        scan_id: "scan-1",
+        status: "completed",
+        lead_count: 2,
+        leads: [
+          buildLead(),
+          buildLead({
+            deceased_name: "Taylor Example",
+            property: {
+              address_line_1: "456 Ranch Road",
+              city: "Austin",
+              state: "TX",
+              postal_code: "78702",
+              county: "Travis",
+            },
+          }),
+        ],
+      }),
+    }));
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-first-scan-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore, fetchImpl, leadEngineBaseUrl: "http://lead-engine" });
+
+    const response = await request(app).post("/first-scan").send({
+      county: "Travis",
+      state: "TX",
+      limit: 2,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://lead-engine/run-scan",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+    expect(response.body.scan_id).toBe("scan-1");
+    expect(response.body.totals).toEqual({
+      created: 2,
+      skipped_duplicate: 0,
+      failed: 0,
+    });
+    expect(response.body.status.deliveries).toHaveLength(2);
+  });
+
   it("separates persisted state by tenant id", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),

@@ -1,6 +1,6 @@
 # user-portal
 
-Phase 1 Vite React scaffold for the broker portal.
+Pilot operator portal for `lli-saas` with live Monday delivery status, board mapping visibility, and first-scan controls.
 
 ## Commands
 
@@ -8,4 +8,3 @@ Phase 1 Vite React scaffold for the broker portal.
 - Run: `npm run dev`
 - Test: `npm test`
 - Build: `npm run build`
-

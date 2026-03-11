@@ -63,7 +63,12 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Pilot operators can onboard the target user without undocumented steps.
   2. Runtime issues are visible in logs, docs, and deployment artifacts.
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 04-01: Harden pilot onboarding, runbook flow, and configuration guidance.
+- [ ] 04-02: Improve runtime visibility and reconcile infra defaults with the live pilot flow.
+- [ ] 04-03: Add a repeatable pilot release gate and final rehearsal checklist.
 
 ## Progress
 
@@ -72,4 +77,4 @@ Plans:
 | 1. Foundation Scaffold | 3/3 | Complete | 2026-03-11 |
 | 2. Reaper Integration | 3/3 | Complete | 2026-03-11 |
 | 3. Monday Delivery Flow | 3/3 | Complete | 2026-03-11 |
-| 4. Pilot Operations | 0/TBD | Not started | - |
+| 4. Pilot Operations | 0/3 | Planned | - |

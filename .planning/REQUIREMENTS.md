@@ -72,6 +72,8 @@
 | OPS-03 | Phase 1 | Complete |
 | OPS-04 | Phase 1 | Complete |
 | EXP-02 | Phase 2 | Complete |
+| EXP-01 | Phase 4 | Planned |
+| EXP-03 | Phase 4 | Planned |
 
 **Coverage:**
 - v1 requirements: 15 total

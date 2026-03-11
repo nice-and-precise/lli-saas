@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Deliver inherited-land leads into a broker's Monday.com workflow with minimal setup friction.
-**Current focus:** Phase 4 preparation after Monday delivery flow completion
+**Current focus:** Phase 4: Pilot Operations planning
 
 ## Current Position
 
 Phase: 4 of 4 (Pilot Operations)
-Plan: 0 planned
-Status: Ready for planning
-Last activity: 2026-03-11 — Completed Phase 3 with live operator delivery flow
+Plan: 3 planned
+Status: Ready for execution
+Last activity: 2026-03-11 — Planned Phase 4 around onboarding, visibility, and pilot release hardening
 
 Progress: [████████░░] 75%
 
@@ -55,6 +55,7 @@ Recent decisions affecting current work:
 - Phase 3: Persist board mapping explicitly per selected board instead of inferring field behavior in code.
 - Phase 3: Use normalized mapped item names as the pilot duplicate key and expose persisted delivery history directly from the adapter state.
 - Phase 3: Keep the portal thin by routing first-scan orchestration and status reads through crm-adapter instead of calling lead-engine directly from the browser.
+- Phase 4: Focus on pilot hardening of the existing workflow rather than adding broader new product scope.
 
 ### Pending Todos
 
@@ -67,6 +68,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11 18:48
-Stopped at: Phase 3 completed, next step is Phase 4 planning
+Last session: 2026-03-11 18:54
+Stopped at: Phase 4 planned, next step is execution
 Resume file: None

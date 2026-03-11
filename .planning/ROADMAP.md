@@ -6,7 +6,7 @@ The roadmap starts with a monorepo foundation that gets the lead engine, Monday 
 
 ## Phases
 
-- [ ] **Phase 1: Foundation Scaffold** - Create the monorepo, service stubs, CI/CD, and pilot docs.
+- [x] **Phase 1: Foundation Scaffold** - Create the monorepo, service stubs, CI/CD, and pilot docs.
 - [ ] **Phase 2: Reaper Integration** - Replace lead-engine stubs with real scan orchestration and data flow.
 - [ ] **Phase 3: Monday Delivery Flow** - Add board mapping, duplicate handling, and lead push workflows.
 - [ ] **Phase 4: Pilot Operations** - Harden onboarding, logging, and pilot execution for real customer use.
@@ -24,9 +24,9 @@ The roadmap starts with a monorepo foundation that gets the lead engine, Monday 
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: Bootstrap git, GSD planning state, and root documentation.
-- [ ] 01-02: Scaffold the lead engine, CRM adapter, and user portal services.
-- [ ] 01-03: Add infra manifests, GitHub Actions workflows, and operator docs.
+- [x] 01-01: Bootstrap git, GSD planning state, and root documentation.
+- [x] 01-02: Scaffold the lead engine, CRM adapter, and user portal services.
+- [x] 01-03: Add infra manifests, GitHub Actions workflows, and operator docs.
 
 ### Phase 2: Reaper Integration
 **Goal**: Connect the lead engine scaffold to the real Reaper runtime and expose scan execution paths.
@@ -35,7 +35,12 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. A scan endpoint can invoke the Reaper integration path.
   2. Scan results have a defined internal contract for downstream delivery.
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [x] 02-01: Define the internal lead contract and minimal durable Monday state.
+- [ ] 02-02: Implement the real `/run-scan` path in lead-engine.
+- [ ] 02-03: Wire Monday board discovery, board selection, and lead item creation in crm-adapter.
 
 ### Phase 3: Monday Delivery Flow
 **Goal**: Turn the CRM adapter into a working lead delivery pipeline with board mapping and duplicate handling.
@@ -59,8 +64,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation Scaffold | 0/3 | In progress | - |
-| 2. Reaper Integration | 0/TBD | Not started | - |
+| 1. Foundation Scaffold | 3/3 | Complete | 2026-03-11 |
+| 2. Reaper Integration | 1/3 | In progress | - |
 | 3. Monday Delivery Flow | 0/TBD | Not started | - |
 | 4. Pilot Operations | 0/TBD | Not started | - |
-

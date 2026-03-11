@@ -261,6 +261,7 @@ describe("crm-adapter auth routes", () => {
   it("creates a Monday item from the internal lead contract on the selected board", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi.fn(async () => []),
       createItem: vi.fn(async () => ({ id: "item-123" })),
     };
     const tokenStore = new FileTokenStore({
@@ -284,6 +285,8 @@ describe("crm-adapter auth routes", () => {
     expect(response.body).toEqual({
       tenant_id: "pilot",
       board_id: "board-1",
+      delivery_id: expect.any(String),
+      status: "created",
       item_id: "item-123",
       item_name: "Pat Example - 123 County Road",
       lead: {
@@ -300,12 +303,18 @@ describe("crm-adapter auth routes", () => {
       token: "token-123",
       boardId: "board-1",
       itemName: "Pat Example - 123 County Road",
+      columnValues: {
+        name: "Pat Example",
+        text: "inheritance",
+        numbers: "1",
+      },
     });
   });
 
   it("rejects malformed internal lead payloads before Monday item creation", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi.fn(async () => []),
       createItem: vi.fn(async () => ({ id: "item-123" })),
     };
     const tokenStore = new FileTokenStore({
@@ -332,6 +341,70 @@ describe("crm-adapter auth routes", () => {
       error: "Invalid internal lead field: scan_id",
     });
     expect(mondayClient.createItem).not.toHaveBeenCalled();
+  });
+
+  it("skips duplicate Monday items and records the outcome", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi.fn(async () => [{ id: "item-123", name: "Pat Example - 123 County Road" }]),
+      createItem: vi.fn(async () => ({ id: "item-999" })),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-duplicate-leads-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/leads").send(buildLead());
+    const tenantState = await tokenStore.getTenantState("pilot");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.status).toBe("skipped_duplicate");
+    expect(response.body.duplicate_of).toBe("item-123");
+    expect(mondayClient.createItem).not.toHaveBeenCalled();
+    expect(tenantState.deliveries[0].status).toBe("skipped_duplicate");
+  });
+
+  it("persists failed delivery attempts for operator visibility", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi.fn(async () => []),
+      createItem: vi.fn(async () => {
+        throw new Error("Monday API request failed with status 500");
+      }),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-failed-leads-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/leads").send(buildLead());
+    const deliveriesResponse = await request(app).get("/deliveries");
+
+    expect(response.statusCode).toBe(502);
+    expect(response.body.status).toBe("failed");
+    expect(deliveriesResponse.statusCode).toBe(200);
+    expect(deliveriesResponse.body.deliveries[0].status).toBe("failed");
+    expect(deliveriesResponse.body.scan_runs[0].scan_id).toBe("scan-1");
   });
 
   it("separates persisted state by tenant id", async () => {

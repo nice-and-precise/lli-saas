@@ -1,5 +1,5 @@
 const axios = require("axios");
-const { CREATE_ITEM_MUTATION, LIST_BOARDS_QUERY } = require("./queries");
+const { CREATE_ITEM_MUTATION, LIST_BOARDS_QUERY, LIST_BOARD_ITEMS_QUERY } = require("./queries");
 
 function wait(ms, sleep = setTimeout) {
   return new Promise((resolve) => sleep(resolve, ms));
@@ -108,12 +108,25 @@ class MondayClient {
     return response.data?.boards ?? [];
   }
 
-  async createItem({ token, boardId, itemName }) {
+  async listBoardItems({ token, boardId }) {
+    const response = await this.executeGraphQL({
+      query: LIST_BOARD_ITEMS_QUERY,
+      variables: {
+        boardIds: [boardId],
+      },
+      token,
+    });
+
+    return response.data?.boards?.[0]?.items_page?.items ?? [];
+  }
+
+  async createItem({ token, boardId, itemName, columnValues = {} }) {
     const response = await this.executeGraphQL({
       query: CREATE_ITEM_MUTATION,
       variables: {
         boardId,
         itemName,
+        columnValues: JSON.stringify(columnValues),
       },
       token,
     });

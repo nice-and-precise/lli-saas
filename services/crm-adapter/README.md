@@ -7,7 +7,7 @@ Express adapter for Monday OAuth, board discovery, board mapping, tenant-aware d
 - Install: `npm install`
 - Run: `npm run dev`
 - Test: `npm test`
-- Docker build: `docker build -t lli-saas/crm-adapter:phase2 .`
+- Docker build: `docker build -t lli-saas/crm-adapter:phase3 .`
 
 ## Environment
 
@@ -27,7 +27,8 @@ The adapter persists tenant-aware Monday OAuth, selected board, board mapping, s
 - `POST /boards/select` with `{ "board_id": "..." }` persists the selected board metadata.
 - `GET /mapping` returns the persisted board mapping for the selected board.
 - `PUT /mapping` persists a focused board mapping model for the selected board.
-- `POST /leads` validates the shared internal lead contract and creates one item on the selected board.
+- `GET /deliveries` returns persisted delivery attempts and scan run status for the active tenant.
+- `POST /leads` validates the shared internal lead contract, checks for duplicates on the selected board, and records created, skipped, or failed delivery outcomes.
 
 Optional request header:
 

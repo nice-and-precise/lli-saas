@@ -1,11 +1,90 @@
 const express = require("express");
 const {
   getInternalLeadSchemaPath,
-  mapInternalLeadToMondayItem,
+  mapInternalLeadToMondayItemWithMapping,
   validateBoardMapping,
 } = require("./internalLead");
 const { MondayClient } = require("./mondayClient");
 const { createDefaultMapping, DEFAULT_TENANT_ID, FileTokenStore } = require("./tokenStore");
+
+function normalizeDuplicateValue(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function buildDuplicateKey(value) {
+  return normalizeDuplicateValue(value);
+}
+
+function buildDeliveryRecord({
+  tenantId,
+  boardId,
+  lead,
+  itemName,
+  duplicateKey,
+  status,
+  itemId = null,
+  duplicateOf = null,
+  error = null,
+}) {
+  return {
+    id: `delivery-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    tenant_id: tenantId,
+    scan_id: lead.scan_id,
+    board_id: boardId,
+    status,
+    item_id: itemId,
+    item_name: itemName,
+    duplicate_of: duplicateOf,
+    duplicate_key: duplicateKey,
+    summary: lead,
+    error,
+    delivered_at: new Date().toISOString(),
+  };
+}
+
+function upsertScanRun(scanRuns, deliveryRecord) {
+  const existingScanRun = scanRuns.find((scanRun) => scanRun.scan_id === deliveryRecord.scan_id);
+
+  if (!existingScanRun) {
+    return [
+      {
+        scan_id: deliveryRecord.scan_id,
+        tenant_id: deliveryRecord.tenant_id,
+        board_id: deliveryRecord.board_id,
+        last_delivery_at: deliveryRecord.delivered_at,
+        last_delivery_status: deliveryRecord.status,
+        lead_count: 1,
+        delivery_ids: [deliveryRecord.id],
+      },
+      ...scanRuns,
+    ];
+  }
+
+  return scanRuns.map((scanRun) =>
+    scanRun.scan_id === deliveryRecord.scan_id
+      ? {
+          ...scanRun,
+          last_delivery_at: deliveryRecord.delivered_at,
+          last_delivery_status: deliveryRecord.status,
+          lead_count: Number(scanRun.lead_count ?? 0) + 1,
+          delivery_ids: [...(scanRun.delivery_ids ?? []), deliveryRecord.id],
+        }
+      : scanRun,
+  );
+}
+
+async function persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns) {
+  const tenantState = await tokenStore.getTenantState(tenantId);
+  const deliveries = [deliveryRecord, ...(tenantState.deliveries ?? [])].slice(0, 50);
+
+  await tokenStore.saveTenantState(tenantId, {
+    deliveries,
+    scan_runs: scanRuns,
+  });
+}
 
 async function getPersistedState(tokenStore, tenantId = DEFAULT_TENANT_ID) {
   if (typeof tokenStore.getState === "function") {
@@ -209,6 +288,18 @@ function createApp(options = {}) {
     });
   });
 
+  app.get("/deliveries", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const state = await getPersistedState(tokenStore, tenantId);
+
+    return res.json({
+      tenant_id: tenantId,
+      board_id: state.board?.id ?? null,
+      deliveries: state.deliveries ?? [],
+      scan_runs: state.scan_runs ?? [],
+    });
+  });
+
   app.post("/leads", async (req, res) => {
     const tenantId = getTenantId(req);
     const state = await getPersistedState(tokenStore, tenantId);
@@ -225,24 +316,96 @@ function createApp(options = {}) {
     let mappedLead;
 
     try {
-      mappedLead = mapInternalLeadToMondayItem(req.body);
+      mappedLead = mapInternalLeadToMondayItemWithMapping(req.body, state.board_mapping);
     } catch (error) {
       return res.status(400).json({ error: error.message });
     }
 
-    const createdItem = await mondayClient.createItem({
+    const duplicateKey = buildDuplicateKey(mappedLead.itemName);
+    const existingItems = await mondayClient.listBoardItems({
       token,
       boardId: state.board.id,
-      itemName: mappedLead.itemName,
     });
+    const duplicateMatch = existingItems.find(
+      (item) => buildDuplicateKey(item.name) === duplicateKey,
+    );
 
-    return res.status(201).json({
-      tenant_id: tenantId,
-      board_id: state.board.id,
-      item_id: createdItem?.id ?? null,
-      item_name: mappedLead.itemName,
-      lead: mappedLead.summary,
-    });
+    if (duplicateMatch) {
+      const deliveryRecord = buildDeliveryRecord({
+        tenantId,
+        boardId: state.board.id,
+        lead: mappedLead.summary,
+        itemName: mappedLead.itemName,
+        duplicateKey,
+        status: "skipped_duplicate",
+        itemId: duplicateMatch.id ?? null,
+        duplicateOf: duplicateMatch.id ?? null,
+      });
+      const scanRuns = upsertScanRun(state.scan_runs ?? [], deliveryRecord);
+      await persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns);
+
+      return res.status(200).json({
+        tenant_id: tenantId,
+        board_id: state.board.id,
+        delivery_id: deliveryRecord.id,
+        status: deliveryRecord.status,
+        item_id: duplicateMatch.id ?? null,
+        item_name: mappedLead.itemName,
+        duplicate_of: duplicateMatch.id ?? null,
+        lead: mappedLead.summary,
+      });
+    }
+
+    try {
+      const createdItem = await mondayClient.createItem({
+        token,
+        boardId: state.board.id,
+        itemName: mappedLead.itemName,
+        columnValues: mappedLead.columnValues,
+      });
+      const deliveryRecord = buildDeliveryRecord({
+        tenantId,
+        boardId: state.board.id,
+        lead: mappedLead.summary,
+        itemName: mappedLead.itemName,
+        duplicateKey,
+        status: "created",
+        itemId: createdItem?.id ?? null,
+      });
+      const scanRuns = upsertScanRun(state.scan_runs ?? [], deliveryRecord);
+      await persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns);
+
+      return res.status(201).json({
+        tenant_id: tenantId,
+        board_id: state.board.id,
+        delivery_id: deliveryRecord.id,
+        status: deliveryRecord.status,
+        item_id: createdItem?.id ?? null,
+        item_name: mappedLead.itemName,
+        lead: mappedLead.summary,
+      });
+    } catch (error) {
+      const deliveryRecord = buildDeliveryRecord({
+        tenantId,
+        boardId: state.board.id,
+        lead: mappedLead.summary,
+        itemName: mappedLead.itemName,
+        duplicateKey,
+        status: "failed",
+        error: error.message,
+      });
+      const scanRuns = upsertScanRun(state.scan_runs ?? [], deliveryRecord);
+      await persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns);
+
+      return res.status(502).json({
+        error: "Monday lead delivery failed",
+        tenant_id: tenantId,
+        board_id: state.board.id,
+        delivery_id: deliveryRecord.id,
+        status: deliveryRecord.status,
+        lead: mappedLead.summary,
+      });
+    }
   });
 
   return app;

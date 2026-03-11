@@ -107,6 +107,9 @@ describe("MondayClient", () => {
         token: "token-123",
         boardId: "board-1",
         itemName: "Pat Example - 123 County Road",
+        columnValues: {
+          owner_column: "Jordan Example",
+        },
       }),
     ).resolves.toEqual({ id: "item-1" });
 
@@ -116,9 +119,44 @@ describe("MondayClient", () => {
         variables: {
           boardId: "board-1",
           itemName: "Pat Example - 123 County Road",
+          columnValues: JSON.stringify({
+            owner_column: "Jordan Example",
+          }),
         },
       }),
       expect.any(Object),
     );
+  });
+
+  it("lists board items for duplicate checks", async () => {
+    const post = vi.fn().mockResolvedValue({
+      status: 200,
+      data: {
+        data: {
+          boards: [
+            {
+              id: "board-1",
+              items_page: {
+                items: [{ id: "item-1", name: "Pat Example - 123 County Road" }],
+              },
+            },
+          ],
+        },
+      },
+      headers: {},
+    });
+    const client = new MondayClient({
+      clientId: "client-id",
+      clientSecret: "secret",
+      redirectUri: "http://localhost:3000/auth/callback",
+      httpClient: { post },
+    });
+
+    await expect(
+      client.listBoardItems({
+        token: "token-123",
+        boardId: "board-1",
+      }),
+    ).resolves.toEqual([{ id: "item-1", name: "Pat Example - 123 County Road" }]);
   });
 });

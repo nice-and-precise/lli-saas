@@ -61,7 +61,35 @@ function validateInternalLead(lead) {
 }
 
 function mapInternalLeadToMondayItem(lead) {
+  return mapInternalLeadToMondayItemWithMapping(lead, {
+    item_name_strategy: "deceased_name_address",
+    columns: {},
+  });
+}
+
+function normalizeMappedValue(value) {
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return value ?? "";
+}
+
+function buildItemName(lead, itemNameStrategy) {
+  if (itemNameStrategy === "deceased_name_only") {
+    return lead.deceased_name.trim();
+  }
+
+  return `${lead.deceased_name} - ${lead.property.address_line_1}`.trim();
+}
+
+function mapInternalLeadToMondayItemWithMapping(lead, mapping) {
   validateInternalLead(lead);
+  validateBoardMapping(mapping);
 
   const address = [
     lead.property.address_line_1,
@@ -72,19 +100,24 @@ function mapInternalLeadToMondayItem(lead) {
     .filter(Boolean)
     .join(", ");
 
-  const itemName = `${lead.deceased_name} - ${lead.property.address_line_1}`.trim();
+  const itemName = buildItemName(lead, mapping.item_name_strategy);
+  const summary = {
+    deceased_name: lead.deceased_name,
+    owner_name: lead.owner_name,
+    property_address: address,
+    contact_count: lead.contacts.length,
+    tags: lead.tags,
+    scan_id: lead.scan_id,
+    source: lead.source,
+  };
+  const columnValues = Object.fromEntries(
+    Object.entries(mapping.columns).map(([field, columnId]) => [columnId, normalizeMappedValue(summary[field])]),
+  );
 
   return {
     itemName,
-    summary: {
-      deceased_name: lead.deceased_name,
-      owner_name: lead.owner_name,
-      property_address: address,
-      contact_count: lead.contacts.length,
-      tags: lead.tags,
-      scan_id: lead.scan_id,
-      source: lead.source,
-    },
+    columnValues,
+    summary,
   };
 }
 
@@ -110,6 +143,7 @@ function validateBoardMapping(mapping) {
 module.exports = {
   getInternalLeadSchemaPath,
   mapInternalLeadToMondayItem,
+  mapInternalLeadToMondayItemWithMapping,
   validateBoardMapping,
   validateInternalLead,
 };

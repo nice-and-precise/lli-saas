@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-portal
+  template:
+    metadata:
+      labels:
+        app: user-portal
+    spec:
+      containers:
+        - name: user-portal
+          image: ghcr.io/nice-and-precise/lli-saas-user-portal:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+

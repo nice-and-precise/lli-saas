@@ -1,0 +1,29 @@
+name: infra-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra-ci.yml"
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra-ci.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: azure/setup-kubectl@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Helm lint
+        run: helm lint infra/charts/lli-saas
+      - name: Helm template
+        run: helm template lli-saas infra/charts/lli-saas > /tmp/lli-saas-rendered.yaml
+      - name: Validate Kubernetes manifests
+        run: kubectl apply --dry-run=client -f /tmp/lli-saas-rendered.yaml

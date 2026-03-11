@@ -1,0 +1,35 @@
+{{- range $key, $svc := .Values.services }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc.name }}
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $svc.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $svc.name }}
+    spec:
+      containers:
+        - name: {{ $svc.name }}
+          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          ports:
+            - containerPort: {{ $svc.port }}
+          resources:
+{{ toYaml $svc.resources | indent 12 }}
+{{- if $svc.probes.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ $svc.probes.path }}
+              port: {{ $svc.port }}
+          livenessProbe:
+            httpGet:
+              path: {{ $svc.probes.path }}
+              port: {{ $svc.port }}
+{{- end }}
+---
+{{- end }}
+

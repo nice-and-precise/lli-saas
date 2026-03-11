@@ -1,0 +1,44 @@
+services:
+  leadEngine:
+    name: lead-engine
+    image:
+      repository: ghcr.io/nice-and-precise/lli-saas-lead-engine
+      tag: latest
+    port: 8000
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+    probes:
+      enabled: true
+      path: /health
+  crmAdapter:
+    name: crm-adapter
+    image:
+      repository: ghcr.io/nice-and-precise/lli-saas-crm-adapter
+      tag: latest
+    port: 3000
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    probes:
+      enabled: true
+      path: /health
+  userPortal:
+    name: user-portal
+    image:
+      repository: ghcr.io/nice-and-precise/lli-saas-user-portal
+      tag: latest
+    port: 80
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    probes:
+      enabled: false
+      path: /
+

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: lli-saas
+description: Helm chart for the lli-saas Phase 1 scaffold
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crm-adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crm-adapter
+  template:
+    metadata:
+      labels:
+        app: crm-adapter
+    spec:
+      containers:
+        - name: crm-adapter
+          image: ghcr.io/nice-and-precise/lli-saas-crm-adapter:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+

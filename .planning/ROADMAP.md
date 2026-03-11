@@ -8,7 +8,7 @@ The roadmap starts with a monorepo foundation that gets the lead engine, Monday 
 
 - [x] **Phase 1: Foundation Scaffold** - Create the monorepo, service stubs, CI/CD, and pilot docs.
 - [x] **Phase 2: Reaper Integration** - Replace lead-engine stubs with real scan orchestration and data flow.
-- [ ] **Phase 3: Monday Delivery Flow** - Add board mapping, duplicate handling, and lead push workflows.
+- [x] **Phase 3: Monday Delivery Flow** - Add board mapping, duplicate handling, and lead push workflows.
 - [ ] **Phase 4: Pilot Operations** - Harden onboarding, logging, and pilot execution for real customer use.
 
 ## Phase Details
@@ -54,7 +54,7 @@ Plans:
 Plans:
 - [x] 03-01: Establish tenant-aware delivery state and board mapping foundations.
 - [x] 03-02: Implement duplicate-aware Monday delivery and persisted delivery status.
-- [ ] 03-03: Add first-scan orchestration and operator visibility to the portal.
+- [x] 03-03: Add first-scan orchestration and operator visibility to the portal.
 
 ### Phase 4: Pilot Operations
 **Goal**: Prepare the platform for a live pilot with operational visibility and cleaner end-user flows.
@@ -71,5 +71,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Foundation Scaffold | 3/3 | Complete | 2026-03-11 |
 | 2. Reaper Integration | 3/3 | Complete | 2026-03-11 |
-| 3. Monday Delivery Flow | 2/3 | In progress | - |
+| 3. Monday Delivery Flow | 3/3 | Complete | 2026-03-11 |
 | 4. Pilot Operations | 0/TBD | Not started | - |

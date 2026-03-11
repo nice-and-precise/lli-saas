@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** Deliver inherited-land leads into a broker's Monday.com workflow with minimal setup friction.
-**Current focus:** Phase 3: Monday Delivery Flow execution
+**Current focus:** Phase 4 preparation after Monday delivery flow completion
 
 ## Current Position
 
-Phase: 3 of 4 (Monday Delivery Flow)
-Plan: 2 complete, 1 planned
-Status: Executing final Phase 3 plan
-Last activity: 2026-03-11 — Completed Phase 3 Plan 03-02 for duplicate-aware delivery and persisted status
+Phase: 4 of 4 (Pilot Operations)
+Plan: 0 planned
+Status: Ready for planning
+Last activity: 2026-03-11 — Completed Phase 3 with live operator delivery flow
 
-Progress: [███████░░░] 66%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: -
 - Total execution time: -
 
@@ -29,10 +29,10 @@ Progress: [███████░░░] 66%
 |-------|-------|-------|----------|
 | 1 | 3 | - | - |
 | 2 | 3 | - | - |
-| 3 | 2 | - | - |
+| 3 | 3 | - | - |
 
 **Recent Trend:**
-- Last 5 plans: 02-02, 02-03, 03-01, 03-02 complete
+- Last 5 plans: 02-03, 03-01, 03-02, 03-03 complete
 - Trend: Positive
 
 ## Accumulated Context
@@ -54,6 +54,7 @@ Recent decisions affecting current work:
 - Phase 3: Extend the existing file-backed Monday state into a tenant-aware store while keeping `pilot` as the default tenant.
 - Phase 3: Persist board mapping explicitly per selected board instead of inferring field behavior in code.
 - Phase 3: Use normalized mapped item names as the pilot duplicate key and expose persisted delivery history directly from the adapter state.
+- Phase 3: Keep the portal thin by routing first-scan orchestration and status reads through crm-adapter instead of calling lead-engine directly from the browser.
 
 ### Pending Todos
 
@@ -66,6 +67,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11 18:44
-Stopped at: Phase 3 final plan execution after completing 03-02
+Last session: 2026-03-11 18:48
+Stopped at: Phase 3 completed, next step is Phase 4 planning
 Resume file: None

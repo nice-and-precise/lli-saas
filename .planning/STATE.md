@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: 3 of 4 (Monday Delivery Flow)
-Plan: 1 complete, 2 planned
-Status: Executing Wave 2 plans
-Last activity: 2026-03-11 — Completed Phase 3 Plan 03-01 for tenant-aware delivery state and board mapping
+Plan: 2 complete, 1 planned
+Status: Executing final Phase 3 plan
+Last activity: 2026-03-11 — Completed Phase 3 Plan 03-02 for duplicate-aware delivery and persisted status
 
-Progress: [██████░░░░] 58%
+Progress: [███████░░░] 66%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: -
 - Total execution time: -
 
@@ -29,10 +29,10 @@ Progress: [██████░░░░] 58%
 |-------|-------|-------|----------|
 | 1 | 3 | - | - |
 | 2 | 3 | - | - |
-| 3 | 1 | - | - |
+| 3 | 2 | - | - |
 
 **Recent Trend:**
-- Last 5 plans: 02-01, 02-02, 02-03, 03-01 complete
+- Last 5 plans: 02-02, 02-03, 03-01, 03-02 complete
 - Trend: Positive
 
 ## Accumulated Context
@@ -53,6 +53,7 @@ Recent decisions affecting current work:
 - Phase 2: Persist Monday board metadata only after live board discovery rather than trusting client-supplied board details.
 - Phase 3: Extend the existing file-backed Monday state into a tenant-aware store while keeping `pilot` as the default tenant.
 - Phase 3: Persist board mapping explicitly per selected board instead of inferring field behavior in code.
+- Phase 3: Use normalized mapped item names as the pilot duplicate key and expose persisted delivery history directly from the adapter state.
 
 ### Pending Todos
 
@@ -65,6 +66,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11 18:39
-Stopped at: Phase 3 Wave 2 execution after completing 03-01
+Last session: 2026-03-11 18:44
+Stopped at: Phase 3 final plan execution after completing 03-02
 Resume file: None

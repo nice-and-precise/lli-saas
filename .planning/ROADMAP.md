@@ -53,7 +53,7 @@ Plans:
 
 Plans:
 - [x] 03-01: Establish tenant-aware delivery state and board mapping foundations.
-- [ ] 03-02: Implement duplicate-aware Monday delivery and persisted delivery status.
+- [x] 03-02: Implement duplicate-aware Monday delivery and persisted delivery status.
 - [ ] 03-03: Add first-scan orchestration and operator visibility to the portal.
 
 ### Phase 4: Pilot Operations
@@ -71,5 +71,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Foundation Scaffold | 3/3 | Complete | 2026-03-11 |
 | 2. Reaper Integration | 3/3 | Complete | 2026-03-11 |
-| 3. Monday Delivery Flow | 1/3 | In progress | - |
+| 3. Monday Delivery Flow | 2/3 | In progress | - |
 | 4. Pilot Operations | 0/TBD | Not started | - |

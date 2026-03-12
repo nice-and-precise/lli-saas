@@ -9,7 +9,7 @@ The roadmap starts with a monorepo foundation that gets the lead engine, Monday 
 - [x] **Phase 1: Foundation Scaffold** - Create the monorepo, service stubs, CI/CD, and pilot docs.
 - [x] **Phase 2: Reaper Integration** - Replace lead-engine stubs with real scan orchestration and data flow.
 - [x] **Phase 3: Monday Delivery Flow** - Add board mapping, duplicate handling, and lead push workflows.
-- [ ] **Phase 4: Pilot Operations** - Harden onboarding, logging, and pilot execution for real customer use.
+- [x] **Phase 4: Pilot Operations** - Harden onboarding, logging, and pilot execution for real customer use.
 
 ## Phase Details
 

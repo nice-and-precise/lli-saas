@@ -1,0 +1,29 @@
+{{- range $name, $schedule := .Values.schedules }}
+{{- if $schedule.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $schedule.name }}
+spec:
+  schedule: {{ $schedule.schedule | quote }}
+  timeZone: {{ $schedule.timeZone | default "America/Chicago" | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: {{ $schedule.name }}
+              image: curlimages/curl:8.12.1
+              args:
+                - /bin/sh
+                - -c
+                - >
+                  curl --fail --silent --show-error
+                  -H "Content-Type: application/json"
+                  -H "x-tenant-id: {{ $schedule.tenantId }}"
+                  -d '{{ $schedule.requestBody }}'
+                  {{ $schedule.endpoint }}
+---
+{{- end }}
+{{- end }}

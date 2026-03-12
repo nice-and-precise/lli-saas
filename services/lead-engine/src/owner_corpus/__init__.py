@@ -13,6 +13,12 @@ class OwnerRecord(BaseModel):
     acres: float | None = None
     parcel_ids: list[str] = Field(default_factory=list)
     mailing_state: str | None = None
+    mailing_city: str | None = None
+    mailing_postal_code: str | None = None
+    property_address_line_1: str | None = None
+    property_city: str | None = None
+    property_postal_code: str | None = None
+    operator_name: str | None = None
     crm_source: str = Field(min_length=1)
     raw_source_ref: str | None = None
 

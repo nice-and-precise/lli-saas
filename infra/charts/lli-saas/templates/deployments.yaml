@@ -25,6 +25,11 @@ spec:
               value: {{ $envValue | quote }}
 {{- end }}
 {{- end }}
+{{- if and $svc.persistence $svc.persistence.enabled }}
+          volumeMounts:
+            - name: {{ $svc.persistence.claimName }}
+              mountPath: {{ $svc.persistence.mountPath | quote }}
+{{- end }}
           resources:
 {{ toYaml $svc.resources | indent 12 }}
 {{- if $svc.probes.enabled }}
@@ -36,6 +41,12 @@ spec:
             httpGet:
               path: {{ $svc.probes.path }}
               port: {{ $svc.port }}
+{{- end }}
+{{- if and $svc.persistence $svc.persistence.enabled }}
+      volumes:
+        - name: {{ $svc.persistence.claimName }}
+          persistentVolumeClaim:
+            claimName: {{ $svc.persistence.claimName }}
 {{- end }}
 ---
 {{- end }}

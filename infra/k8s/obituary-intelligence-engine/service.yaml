@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: obituary-intelligence-engine
+spec:
+  selector:
+    app: obituary-intelligence-engine
+  ports:
+    - port: 8080
+      targetPort: 8080

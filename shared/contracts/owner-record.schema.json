@@ -12,6 +12,12 @@
     "acres",
     "parcel_ids",
     "mailing_state",
+    "mailing_city",
+    "mailing_postal_code",
+    "property_address_line_1",
+    "property_city",
+    "property_postal_code",
+    "operator_name",
     "crm_source",
     "raw_source_ref"
   ],
@@ -49,6 +55,42 @@
       }
     },
     "mailing_state": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mailing_city": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mailing_postal_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "property_address_line_1": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "property_city": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "property_postal_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "operator_name": {
       "type": [
         "string",
         "null"

@@ -1,11 +1,38 @@
 import { startTransition, useEffect, useState } from "react";
 
-const CRM_ADAPTER_BASE_URL = import.meta.env.VITE_CRM_ADAPTER_BASE_URL ?? "http://localhost:3000";
-const LEAD_ENGINE_BASE_URL = import.meta.env.VITE_LEAD_ENGINE_BASE_URL ?? "http://localhost:8000";
+import { getRequiredServiceBaseUrl } from "../runtimeConfig";
 
 const INITIAL_FORM = {
   owner_limit: 1000,
+  lookback_days: 7,
+  reference_date: "",
+  source_ids: "",
 };
+
+const MAPPING_FIELDS = [
+  "deceased_name",
+  "owner_name",
+  "owner_id",
+  "property_address",
+  "county",
+  "acres",
+  "operator_name",
+  "death_date",
+  "obituary_source",
+  "obituary_url",
+  "match_score",
+  "match_status",
+  "tier",
+  "heir_count",
+  "heirs_formatted",
+  "out_of_state_heir_likely",
+  "out_of_state_states",
+  "executor_mentioned",
+  "unexpected_death",
+  "tags",
+  "scan_id",
+  "source",
+];
 
 async function fetchJson(baseUrl, path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -30,12 +57,35 @@ function formatColumnSummary(mapping) {
     .join(", ");
 }
 
+function parseSourceIds(rawValue) {
+  return rawValue
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function buildInitialMappingDraft(mapping) {
+  const columns = {};
+  for (const field of MAPPING_FIELDS) {
+    columns[field] = mapping?.columns?.[field] ?? "";
+  }
+  return {
+    item_name_strategy: mapping?.item_name_strategy ?? "deceased_name_county",
+    columns,
+  };
+}
+
 export default function DashboardPage() {
   const [status, setStatus] = useState(null);
   const [mapping, setMapping] = useState(null);
+  const [mappingDraft, setMappingDraft] = useState(buildInitialMappingDraft(null));
+  const [boards, setBoards] = useState([]);
+  const [selectedBoardId, setSelectedBoardId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(true);
   const [runningScan, setRunningScan] = useState(false);
+  const [savingBoard, setSavingBoard] = useState(false);
+  const [savingMapping, setSavingMapping] = useState(false);
   const [error, setError] = useState("");
   const [lastRunSummary, setLastRunSummary] = useState(null);
 
@@ -44,26 +94,42 @@ export default function DashboardPage() {
     setError("");
 
     try {
-      const [statusPayload, mappingResult] = await Promise.allSettled([
-        fetchJson(CRM_ADAPTER_BASE_URL, "/status"),
-        fetchJson(CRM_ADAPTER_BASE_URL, "/mapping"),
+      const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
+      const [statusPayload, mappingResult, boardsResult] = await Promise.allSettled([
+        fetchJson(crmAdapterBaseUrl, "/status"),
+        fetchJson(crmAdapterBaseUrl, "/mapping"),
+        fetchJson(crmAdapterBaseUrl, "/boards"),
       ]);
 
-      if (statusPayload.status === "fulfilled") {
-        startTransition(() => {
-          setStatus(statusPayload.value);
-        });
-      } else {
+      if (statusPayload.status !== "fulfilled") {
         throw statusPayload.reason;
       }
+
+      startTransition(() => {
+        setStatus(statusPayload.value);
+      });
 
       if (mappingResult.status === "fulfilled") {
         startTransition(() => {
           setMapping(mappingResult.value);
+          setMappingDraft(buildInitialMappingDraft(mappingResult.value.mapping));
         });
       } else {
         startTransition(() => {
           setMapping(null);
+          setMappingDraft(buildInitialMappingDraft(null));
+        });
+      }
+
+      if (boardsResult.status === "fulfilled") {
+        startTransition(() => {
+          setBoards(boardsResult.value.boards ?? []);
+          setSelectedBoardId(boardsResult.value.selected_board?.id ?? "");
+        });
+      } else {
+        startTransition(() => {
+          setBoards([]);
+          setSelectedBoardId(statusPayload.value.board?.id ?? "");
         });
       }
     } catch (requestError) {
@@ -83,10 +149,14 @@ export default function DashboardPage() {
     setError("");
 
     try {
-      const result = await fetchJson(LEAD_ENGINE_BASE_URL, "/run-scan", {
+      const leadEngineBaseUrl = getRequiredServiceBaseUrl("leadEngineBaseUrl");
+      const result = await fetchJson(leadEngineBaseUrl, "/run-scan", {
         method: "POST",
         body: JSON.stringify({
           owner_limit: Number(form.owner_limit),
+          lookback_days: Number(form.lookback_days),
+          reference_date: form.reference_date || null,
+          source_ids: parseSourceIds(form.source_ids),
         }),
       });
 
@@ -101,9 +171,60 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleBoardSelect(event) {
+    event.preventDefault();
+    if (!selectedBoardId) {
+      return;
+    }
+
+    setSavingBoard(true);
+    setError("");
+    try {
+      const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
+      await fetchJson(crmAdapterBaseUrl, "/boards/select", {
+        method: "POST",
+        body: JSON.stringify({ board_id: selectedBoardId }),
+      });
+      await refreshDashboard();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSavingBoard(false);
+    }
+  }
+
+  async function handleMappingSave(event) {
+    event.preventDefault();
+    setSavingMapping(true);
+    setError("");
+
+    try {
+      const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
+      const payload = {
+        item_name_strategy: mappingDraft.item_name_strategy,
+        columns: Object.fromEntries(
+          Object.entries(mappingDraft.columns).filter(([, value]) => value.trim() !== ""),
+        ),
+      };
+      const result = await fetchJson(crmAdapterBaseUrl, "/mapping", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      startTransition(() => {
+        setMapping(result);
+        setMappingDraft(buildInitialMappingDraft(result.mapping));
+      });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSavingMapping(false);
+    }
+  }
+
   const selectedBoard = status?.board?.name ?? "No destination board selected";
   const deliveryCount = status?.deliveries?.length ?? 0;
   const latestDelivery = status?.latest_delivery;
+  const latestLeadSummary = latestDelivery?.summary ?? null;
 
   return (
     <main className="page dashboard-page">
@@ -113,8 +234,8 @@ export default function DashboardPage() {
           <h1>Obituary intelligence cockpit.</h1>
           <p className="lede">
             Pull owner records from the Monday <strong>Clients</strong> board, run the
-            obituary intelligence scan through <code>lead-engine</code>, and inspect
-            destination-board delivery outcomes from the persisted CRM adapter state.
+            obituary intelligence scan through <code>lead-engine</code>, and manage the
+            richer delivery mapping for obituary, heir, and match signals.
           </p>
         </div>
         <div className="hero-metrics">
@@ -170,6 +291,33 @@ export default function DashboardPage() {
                 onChange={(event) => setForm((current) => ({ ...current, owner_limit: event.target.value }))}
               />
             </label>
+            <label>
+              Lookback days
+              <input
+                type="number"
+                min="1"
+                max="30"
+                value={form.lookback_days}
+                onChange={(event) => setForm((current) => ({ ...current, lookback_days: event.target.value }))}
+              />
+            </label>
+            <label>
+              Reference date
+              <input
+                type="date"
+                value={form.reference_date}
+                onChange={(event) => setForm((current) => ({ ...current, reference_date: event.target.value }))}
+              />
+            </label>
+            <label>
+              Source ids
+              <input
+                type="text"
+                placeholder="kwbg_boone, the_gazette"
+                value={form.source_ids}
+                onChange={(event) => setForm((current) => ({ ...current, source_ids: event.target.value }))}
+              />
+            </label>
             <button type="submit" disabled={runningScan}>
               {runningScan ? "Running scan..." : "Run obituary scan"}
             </button>
@@ -190,6 +338,74 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid dashboard-grid">
+        <article className="panel">
+          <h2>Destination board</h2>
+          <form className="auth-form" onSubmit={handleBoardSelect}>
+            <label>
+              Choose Monday board
+              <select
+                value={selectedBoardId}
+                onChange={(event) => setSelectedBoardId(event.target.value)}
+              >
+                <option value="">Select a board</option>
+                {boards.map((board) => (
+                  <option key={board.id} value={board.id}>
+                    {board.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" disabled={savingBoard || !selectedBoardId}>
+              {savingBoard ? "Saving board..." : "Save board"}
+            </button>
+          </form>
+        </article>
+
+        <article className="panel mapping-editor-card">
+          <h2>Mapping editor</h2>
+          <form className="auth-form mapping-form" onSubmit={handleMappingSave}>
+            <label>
+              Item name strategy
+              <select
+                value={mappingDraft.item_name_strategy}
+                onChange={(event) =>
+                  setMappingDraft((current) => ({ ...current, item_name_strategy: event.target.value }))
+                }
+              >
+                <option value="deceased_name_county">deceased_name_county</option>
+                <option value="deceased_name_only">deceased_name_only</option>
+                <option value="deceased_name_address">deceased_name_address</option>
+              </select>
+            </label>
+            <div className="mapping-grid">
+              {MAPPING_FIELDS.map((field) => (
+                <label key={field}>
+                  {field}
+                  <input
+                    type="text"
+                    placeholder="column_id"
+                    value={mappingDraft.columns[field] ?? ""}
+                    onChange={(event) =>
+                      setMappingDraft((current) => ({
+                        ...current,
+                        columns: {
+                          ...current.columns,
+                          [field]: event.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+            <button type="submit" disabled={savingMapping}>
+              {savingMapping ? "Saving mapping..." : "Save mapping"}
+            </button>
+          </form>
+        </article>
+      </section>
+
+      <section className="grid dashboard-grid">
         <article className="panel lead-card">
           <h2>Recent delivery</h2>
           {latestDelivery ? (
@@ -197,6 +413,13 @@ export default function DashboardPage() {
               <p className="lead-title">{latestDelivery.item_name}</p>
               <p>Status: {latestDelivery.status}</p>
               <p>Scan: {latestDelivery.scan_id}</p>
+              {latestLeadSummary ? (
+                <>
+                  <p>Tier: {latestLeadSummary.tier ?? "n/a"}</p>
+                  <p>Match score: {latestLeadSummary.match_score ?? "n/a"}</p>
+                  <p>Heirs: {latestLeadSummary.heir_count ?? 0}</p>
+                </>
+              ) : null}
             </>
           ) : (
             <p>No delivery records yet.</p>
@@ -210,6 +433,7 @@ export default function DashboardPage() {
               <li key={delivery.id}>
                 <strong>{delivery.item_name}</strong>
                 <span>{delivery.status}</span>
+                <span>{delivery.summary?.tier ?? "tier unavailable"}</span>
               </li>
             ))}
           </ul>

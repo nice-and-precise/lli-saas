@@ -1,68 +1,109 @@
 # System Architecture
 
-This document is the architectural source of truth for `lli-saas`.
+This document is the architecture source of truth for `lli-saas`.
 
-## System purpose
+## System Purpose
 
-`lli-saas` is an obituary intelligence and lead delivery platform for brokers.
+`lli-saas` is an obituary-intelligence and CRM lead-delivery platform for land brokers.
 
-- Customer CRM is the source of truth for owner data.
-- The platform enriches broker-owned CRM landowner records with death, heir, and inherited-land signals.
-- The product is not a land database platform and does not own the owner corpus.
+- CRM is the source of truth for owner data.
+- Owner data is fetched fresh at scan time.
+- Obituary intelligence is a bounded service, not a CRM concern.
+- The platform does not become a permanent owner or obituary warehouse.
 
-## Core flow
+## Core Runtime Flow
 
-`CRM -> Owner Corpus -> Obituary Intelligence Engine -> Lead Graph -> CRM Delivery`
+```mermaid
+flowchart LR
+    CRM["Monday.com"] -->|"Clients board"| CA["crm-adapter"]
+    CA -->|"OwnerRecord[]"| LE["lead-engine"]
+    LE -->|"scan request"| OE["obituary-intelligence-engine"]
+    OE -->|"Lead[]"| LE
+    LE -->|"Lead[]"| CA
+    CA -->|"create_item + mapping"| CRM
+    UP["user-portal"] -->|"run scan"| LE
+    UP -->|"boards / mapping / status"| CA
+```
 
-For the current MVP the concrete path is:
+## Scan Pipeline
 
-`Monday Clients board -> canonical OwnerRecord[] -> obituary_intelligence_engine -> canonical Lead[] -> Monday destination board`
+```mermaid
+flowchart TB
+    A["Run Scan Request"] --> B["crm-adapter<br/>fetch Owners from Clients"]
+    B --> C["lead-engine<br/>validate + orchestrate"]
+    C --> D["obituary-intelligence-engine<br/>RSS collection"]
+    D --> E["actionability gate + dedupe"]
+    E --> F["heir extraction"]
+    F --> G["nickname-aware fuzzy matching"]
+    G --> H["tiering + canonical Lead[]"]
+    H --> I["crm-adapter<br/>map + dedupe + deliver"]
+    I --> J["Monday destination board"]
+```
+
+## Deployment Footprint
+
+```mermaid
+flowchart TB
+    subgraph Runtime["Pilot Deployment"]
+      Cron["CronJob<br/>daily lead scan<br/>America/Chicago"]
+      LE["lead-engine"]
+      OE["obituary-intelligence-engine"]
+      CA["crm-adapter"]
+      UP["user-portal"]
+      CAPVC["crm-adapter PVC"]
+      OEPVC["obituary-engine PVC"]
+    end
+
+    Cron --> LE
+    UP --> LE
+    UP --> CA
+    LE --> OE
+    LE --> CA
+    CA --> Monday["Monday.com"]
+    CA --- CAPVC
+    OE --- OEPVC
+```
 
 ## Components
 
 - `user-portal`
-  - Operator-facing UI for OAuth setup, destination-board mapping visibility, status, and scan launch.
-  - Reads status and mapping from `crm-adapter`.
-  - Triggers scans through `lead-engine`.
-
+  - operator-facing UI for board selection, mapping edits, scan launch, and visibility
 - `crm-adapter`
-  - Monday-only adapter for the MVP.
-  - Owns Monday OAuth, source-owner fetch from the `Clients` board, destination-board selection, board mapping, and lead delivery back into Monday.
-  - Translates Monday-specific schemas to and from canonical models.
-
-- `owner_corpus`
-  - Canonical internal owner-record boundary.
-  - Represents the normalized owner corpus for a single scan request.
-  - Exists in memory for the duration of a scan and is not persisted yet.
-
-- `obituary_intelligence_engine`
-  - Intelligence boundary that consumes canonical `OwnerRecord[]`.
-  - Wraps the legacy Reaper concept without leaking legacy naming or CRM-specific field assumptions into the rest of the platform.
-
+  - Monday-only adapter for OAuth, board discovery, owner normalization, delivery mapping, duplicate handling, and persisted delivery state
 - `lead-engine`
-  - Single orchestration owner for `run_scan()`.
-  - Fetches owner records through the CRM adapter, invokes `obituary_intelligence_engine`, aggregates delivery results, and returns canonical `ScanResult`.
+  - the single orchestration owner for `run_scan()`
+- `obituary-intelligence-engine`
+  - owns RSS ingestion, obituary text extraction, actionability gating, heuristic/LLM heir extraction, nickname-aware matching, out-of-state detection, and lead tiering
 
-- `auth`
-  - Monday OAuth is currently relevant for CRM connectivity.
-  - No broader application auth platform is in scope in the current MVP beyond the existing local portal stub.
-
-## Canonical models
+## Canonical Models
 
 - `OwnerRecord`
-  - `owner_id: string`
-  - `owner_name: string`
-  - `county: string | null`
-  - `state: string | null`
-  - `acres: number | null`
-  - `parcel_ids: string[]`
-  - `mailing_state: string | null`
-  - `crm_source: string`
-  - `raw_source_ref: string | null`
+  - `owner_id`
+  - `owner_name`
+  - `county`
+  - `state`
+  - `acres`
+  - `parcel_ids`
+  - `mailing_state`
+  - `mailing_city`
+  - `mailing_postal_code`
+  - `property_address_line_1`
+  - `property_city`
+  - `property_postal_code`
+  - `operator_name`
+  - `crm_source`
+  - `raw_source_ref`
 
 - `Lead`
-  - Canonical lead payload used between obituary intelligence and CRM delivery.
-  - Includes scan metadata, owner/deceased identity, property details, heir contacts, notes, tags, and raw artifact references.
+  - scan metadata
+  - owner and deceased identity
+  - mixed-quality property details
+  - heir records
+  - obituary metadata
+  - match metadata
+  - `tier`
+  - out-of-state and executor signals
+  - notes, tags, raw artifact references
 
 - `ScanResult`
   - `scan_id`
@@ -73,28 +114,29 @@ For the current MVP the concrete path is:
   - `leads`
   - `errors`
 
-## Design rules
+## Persistence Boundaries
 
-- CRM is the source of truth for owner data.
-- Owner data is fetched fresh at runtime for every scan.
-- `lli-saas` does not persist the owner corpus yet.
-- Canonical schemas isolate CRM-specific differences from the obituary engine and the rest of the platform.
-- `obituary_intelligence_engine` is the intelligence layer, not the CRM integration layer.
-- Future CRM support should require only new adapter mappings, not engine-core rewrites.
-- `run_scan()` is the single orchestration entry point.
+- Not persisted
+  - owner corpus snapshots
+  - full obituary corpus
+  - permanent lead warehouse
 
-## MVP scope
+- Persisted by `crm-adapter`
+  - Monday OAuth/account state
+  - selected board metadata
+  - board mapping
+  - deliveries
+  - scan-run summaries
 
-- Monday.com is the first CRM adapter.
-- The source owner board is `Clients`.
-- Leads are delivered back into the customer CRM.
-- No mock data.
-- No permanent owner database inside `lli-saas`.
-- No multi-CRM implementation in the current pass.
-- No enterprise API surface or speculative infrastructure beyond what is needed for the real end-to-end path.
+- Persisted by `obituary-intelligence-engine`
+  - feed checkpoints
+  - processed obituary fingerprints with retention pruning
 
-## Future extension notes
+## Design Rules
 
-- Additional CRM support should be added through new adapter mappings around canonical `OwnerRecord` and `Lead`.
-- Owner snapshot caching can be added later if runtime fetch cost or latency requires it.
-- State-based scan partitioning can be added later if volume or throughput requires it.
+- CRM remains the owner-data source of truth.
+- `lead-engine` remains the single orchestration entrypoint.
+- `obituary-intelligence-engine` returns canonical leads directly.
+- CRM-specific mapping logic stays in `crm-adapter`.
+- Operator-specific workflow stays in `user-portal`.
+- Future CRM support should require new adapter mappings, not obituary-core rewrites.

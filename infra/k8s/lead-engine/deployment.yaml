@@ -23,7 +23,7 @@ spec:
             - name: CRM_ADAPTER_BASE_URL
               value: "http://crm-adapter:3000"
             - name: OBITUARY_ENGINE_BASE_URL
-              value: "http://reaper:8080"
+              value: "http://obituary-intelligence-engine:8080"
           resources:
             requests:
               cpu: 250m

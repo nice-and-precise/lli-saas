@@ -24,12 +24,42 @@ function buildDuplicateKey(value) {
   return normalizeDuplicateValue(value);
 }
 
+function buildLeadIdentity(lead) {
+  const obituaryUrl = buildDuplicateKey(lead.obituary_url ?? lead.obituary?.url ?? "");
+  const fallbackKey = buildDuplicateKey(
+    [lead.deceased_name, lead.death_date ?? lead.obituary?.death_date ?? "", lead.owner_id]
+      .filter(Boolean)
+      .join("::"),
+  );
+
+  return {
+    obituaryUrl,
+    fallbackKey,
+  };
+}
+
+function findExistingDeliveryByIdentity(deliveries, identity) {
+  return (deliveries ?? []).find((delivery) => {
+    if (identity.obituaryUrl && delivery.obituary_url && buildDuplicateKey(delivery.obituary_url) === identity.obituaryUrl) {
+      return true;
+    }
+
+    return Boolean(
+      identity.fallbackKey &&
+        delivery.fallback_duplicate_key &&
+        buildDuplicateKey(delivery.fallback_duplicate_key) === identity.fallbackKey,
+    );
+  });
+}
+
 function buildDeliveryRecord({
   tenantId,
   boardId,
   lead,
   itemName,
   duplicateKey,
+  obituaryUrl = null,
+  fallbackDuplicateKey = null,
   status,
   itemId = null,
   duplicateOf = null,
@@ -45,6 +75,8 @@ function buildDeliveryRecord({
     item_name: itemName,
     duplicate_of: duplicateOf,
     duplicate_key: duplicateKey,
+    obituary_url: obituaryUrl,
+    fallback_duplicate_key: fallbackDuplicateKey,
     summary: lead,
     error,
     delivered_at: new Date().toISOString(),
@@ -239,7 +271,7 @@ function createApp(options = {}) {
     let mappedLead;
 
     try {
-      mappedLead = mapLeadToMondayItemWithMapping(leadPayload, state.board_mapping);
+      mappedLead = mapLeadToMondayItemWithMapping(leadPayload, state.board_mapping, state.board.columns ?? []);
     } catch (error) {
       return {
         statusCode: 400,
@@ -247,7 +279,40 @@ function createApp(options = {}) {
       };
     }
 
-    const duplicateKey = buildDuplicateKey(mappedLead.itemName);
+    const identity = buildLeadIdentity(mappedLead.summary);
+    const duplicateKey = identity.obituaryUrl || identity.fallbackKey || buildDuplicateKey(mappedLead.itemName);
+    const persistedDuplicate = findExistingDeliveryByIdentity(state.deliveries, identity);
+    if (persistedDuplicate) {
+      const deliveryRecord = buildDeliveryRecord({
+        tenantId,
+        boardId: state.board.id,
+        lead: mappedLead.summary,
+        itemName: mappedLead.itemName,
+        duplicateKey,
+        obituaryUrl: mappedLead.summary.obituary_url ?? null,
+        fallbackDuplicateKey: identity.fallbackKey,
+        status: "skipped_duplicate",
+        itemId: persistedDuplicate.item_id ?? null,
+        duplicateOf: persistedDuplicate.item_id ?? persistedDuplicate.duplicate_of ?? null,
+      });
+      const scanRuns = upsertScanRun(state.scan_runs ?? [], deliveryRecord);
+      await persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns);
+
+      return {
+        statusCode: 200,
+        body: {
+          tenant_id: tenantId,
+          board_id: state.board.id,
+          delivery_id: deliveryRecord.id,
+          status: deliveryRecord.status,
+          item_id: deliveryRecord.item_id,
+          item_name: mappedLead.itemName,
+          duplicate_of: deliveryRecord.duplicate_of,
+          lead: mappedLead.summary,
+        },
+      };
+    }
+
     let existingItems;
     try {
       existingItems = await mondayClient.listBoardItems({
@@ -270,6 +335,8 @@ function createApp(options = {}) {
         lead: mappedLead.summary,
         itemName: mappedLead.itemName,
         duplicateKey,
+        obituaryUrl: mappedLead.summary.obituary_url ?? null,
+        fallbackDuplicateKey: identity.fallbackKey,
         status: "skipped_duplicate",
         itemId: duplicateMatch.id ?? null,
         duplicateOf: duplicateMatch.id ?? null,
@@ -305,6 +372,8 @@ function createApp(options = {}) {
         lead: mappedLead.summary,
         itemName: mappedLead.itemName,
         duplicateKey,
+        obituaryUrl: mappedLead.summary.obituary_url ?? null,
+        fallbackDuplicateKey: identity.fallbackKey,
         status: "created",
         itemId: createdItem?.id ?? null,
       });
@@ -330,6 +399,8 @@ function createApp(options = {}) {
         lead: mappedLead.summary,
         itemName: mappedLead.itemName,
         duplicateKey,
+        obituaryUrl: mappedLead.summary.obituary_url ?? null,
+        fallbackDuplicateKey: identity.fallbackKey,
         status: "failed",
         error: error.message,
       });

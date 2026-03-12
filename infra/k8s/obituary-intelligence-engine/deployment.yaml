@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obituary-intelligence-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: obituary-intelligence-engine
+  template:
+    metadata:
+      labels:
+        app: obituary-intelligence-engine
+    spec:
+      containers:
+        - name: obituary-intelligence-engine
+          image: ghcr.io/nice-and-precise/lli-saas-obituary-intelligence-engine:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: OBITUARY_ENGINE_STATE_PATH
+              value: "/var/lib/lli-saas/obituary-intelligence-engine/state.json"
+            - name: OBITUARY_ENGINE_RETENTION_DAYS
+              value: "30"
+            - name: OBITUARY_HTTP_TIMEOUT_SECONDS
+              value: "10"
+          volumeMounts:
+            - name: obituary-engine-state
+              mountPath: "/var/lib/lli-saas/obituary-intelligence-engine"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+      volumes:
+        - name: obituary-engine-state
+          persistentVolumeClaim:
+            claimName: obituary-engine-state

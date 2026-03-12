@@ -20,6 +20,7 @@ const LIST_BOARDS_QUERY = `
       columns {
         id
         title
+        type
       }
     }
   }

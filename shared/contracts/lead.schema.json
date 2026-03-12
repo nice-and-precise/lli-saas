@@ -9,10 +9,18 @@
     "source",
     "run_started_at",
     "run_completed_at",
+    "owner_id",
     "owner_name",
     "deceased_name",
     "property",
-    "contacts",
+    "heirs",
+    "obituary",
+    "match",
+    "tier",
+    "out_of_state_heir_likely",
+    "out_of_state_states",
+    "executor_mentioned",
+    "unexpected_death",
     "notes",
     "tags",
     "raw_artifacts"
@@ -34,6 +42,10 @@
       "type": "string",
       "format": "date-time"
     },
+    "owner_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "owner_name": {
       "type": "string",
       "minLength": 1
@@ -46,36 +58,67 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "county",
+        "state",
+        "acres",
+        "parcel_ids",
         "address_line_1",
         "city",
-        "state",
         "postal_code",
-        "county"
+        "operator_name"
       ],
       "properties": {
-        "address_line_1": {
-          "type": "string",
-          "minLength": 1
-        },
-        "city": {
-          "type": "string",
-          "minLength": 1
+        "county": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "state": {
-          "type": "string",
-          "minLength": 1
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "acres": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "parcel_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "address_line_1": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "city": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "postal_code": {
-          "type": "string",
-          "minLength": 1
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "county": {
-          "type": "string",
-          "minLength": 1
+        "operator_name": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },
-    "contacts": {
+    "heirs": {
       "type": "array",
       "items": {
         "type": "object",
@@ -83,9 +126,13 @@
         "required": [
           "name",
           "relationship",
+          "location_city",
+          "location_state",
+          "out_of_state",
           "phone",
           "email",
-          "mailing_address"
+          "mailing_address",
+          "executor"
         ],
         "properties": {
           "name": {
@@ -96,17 +143,148 @@
             "type": "string",
             "minLength": 1
           },
+          "location_city": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "out_of_state": {
+            "type": "boolean"
+          },
           "phone": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "email": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "mailing_address": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "executor": {
+            "type": "boolean"
           }
         }
       }
+    },
+    "obituary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "source_id",
+        "published_at",
+        "death_date",
+        "deceased_city",
+        "deceased_state"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "published_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "death_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "deceased_city": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deceased_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "score",
+        "last_name_score",
+        "first_name_score",
+        "location_bonus_applied",
+        "status"
+      ],
+      "properties": {
+        "score": {
+          "type": "number"
+        },
+        "last_name_score": {
+          "type": "number"
+        },
+        "first_name_score": {
+          "type": "number"
+        },
+        "location_bonus_applied": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "auto_confirmed",
+            "pending_review"
+          ]
+        }
+      }
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "hot",
+        "warm",
+        "pending_review",
+        "low_signal"
+      ]
+    },
+    "out_of_state_heir_likely": {
+      "type": "boolean"
+    },
+    "out_of_state_states": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "executor_mentioned": {
+      "type": "boolean"
+    },
+    "unexpected_death": {
+      "type": "boolean"
     },
     "notes": {
       "type": "array",

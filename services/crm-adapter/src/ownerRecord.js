@@ -13,6 +13,12 @@ const OWNER_FIELD_ALIASES = {
   acres: ["acres", "acreage"],
   parcel_ids: ["parcel_id", "parcel_ids", "parcel", "apn", "apns"],
   mailing_state: ["mailing_state", "mail_state"],
+  mailing_city: ["mailing_city", "mail_city", "city"],
+  mailing_postal_code: ["mailing_postal_code", "mail_postal_code", "mail_zip", "zip"],
+  property_address_line_1: ["property_address_line_1", "property_address", "address", "address_line_1"],
+  property_city: ["property_city", "property_town", "farm_city"],
+  property_postal_code: ["property_postal_code", "property_zip", "property_zip_code"],
+  operator_name: ["operator_name", "tenant_name", "who_farms_it", "farmer", "operator"],
 };
 
 function getOwnerRecordSchemaPath() {
@@ -112,6 +118,12 @@ function mapMondayItemToOwnerRecord({ boardId, item }) {
     acres: parseAcres(firstMappedValue(lookup, OWNER_FIELD_ALIASES.acres)),
     parcel_ids: parseParcelIds(firstMappedValue(lookup, OWNER_FIELD_ALIASES.parcel_ids)),
     mailing_state: firstMappedValue(lookup, OWNER_FIELD_ALIASES.mailing_state),
+    mailing_city: firstMappedValue(lookup, OWNER_FIELD_ALIASES.mailing_city),
+    mailing_postal_code: firstMappedValue(lookup, OWNER_FIELD_ALIASES.mailing_postal_code),
+    property_address_line_1: firstMappedValue(lookup, OWNER_FIELD_ALIASES.property_address_line_1),
+    property_city: firstMappedValue(lookup, OWNER_FIELD_ALIASES.property_city),
+    property_postal_code: firstMappedValue(lookup, OWNER_FIELD_ALIASES.property_postal_code),
+    operator_name: firstMappedValue(lookup, OWNER_FIELD_ALIASES.operator_name),
     crm_source: "monday",
     raw_source_ref: `board:${boardId}:item:${item.id}`,
   };

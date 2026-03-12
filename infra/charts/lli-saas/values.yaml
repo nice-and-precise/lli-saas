@@ -15,7 +15,32 @@ services:
       path: /ready
     env:
       CRM_ADAPTER_BASE_URL: http://crm-adapter:3000
-      OBITUARY_ENGINE_BASE_URL: http://reaper:8080
+      OBITUARY_ENGINE_BASE_URL: http://obituary-intelligence-engine:8080
+  obituaryIntelligenceEngine:
+    name: obituary-intelligence-engine
+    image:
+      repository: ghcr.io/nice-and-precise/lli-saas-obituary-intelligence-engine
+      tag: latest
+    port: 8080
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+    probes:
+      enabled: true
+      path: /ready
+    env:
+      OBITUARY_ENGINE_STATE_PATH: /var/lib/lli-saas/obituary-intelligence-engine/state.json
+      OBITUARY_ENGINE_RETENTION_DAYS: "30"
+      OBITUARY_HTTP_TIMEOUT_SECONDS: "10"
+    persistence:
+      enabled: true
+      claimName: obituary-engine-state
+      mountPath: /var/lib/lli-saas/obituary-intelligence-engine
+      accessModes:
+        - ReadWriteOnce
+      size: 1Gi
   crmAdapter:
     name: crm-adapter
     image:
@@ -34,6 +59,14 @@ services:
       MONDAY_CLIENT_ID: change-me
       MONDAY_CLIENT_SECRET: change-me
       MONDAY_REDIRECT_URI: http://crm-adapter:3000/auth/callback
+      CRM_ADAPTER_STATE_PATH: /var/lib/lli-saas/crm-adapter/monday-state.json
+    persistence:
+      enabled: true
+      claimName: crm-adapter-state
+      mountPath: /var/lib/lli-saas/crm-adapter
+      accessModes:
+        - ReadWriteOnce
+      size: 1Gi
   userPortal:
     name: user-portal
     image:
@@ -48,3 +81,15 @@ services:
     probes:
       enabled: false
       path: /
+    env:
+      CRM_ADAPTER_BASE_URL: https://crm-adapter.example.com
+      LEAD_ENGINE_BASE_URL: https://lead-engine.example.com
+schedules:
+  dailyLeadScan:
+    enabled: true
+    name: lead-engine-daily-scan
+    schedule: "0 12 * * *"
+    timeZone: "America/Chicago"
+    endpoint: http://lead-engine:8000/run-scan
+    tenantId: pilot
+    requestBody: '{"owner_limit":10000,"lookback_days":7,"source_ids":[]}'

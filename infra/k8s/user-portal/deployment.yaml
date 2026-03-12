@@ -17,8 +17,12 @@ spec:
           image: ghcr.io/nice-and-precise/lli-saas-user-portal:latest
           ports:
             - containerPort: 80
+          env:
+            - name: CRM_ADAPTER_BASE_URL
+              value: "https://crm-adapter.example.com"
+            - name: LEAD_ENGINE_BASE_URL
+              value: "https://lead-engine.example.com"
           resources:
             requests:
               cpu: 100m
               memory: 128Mi
-

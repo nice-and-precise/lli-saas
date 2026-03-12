@@ -1,5 +1,6 @@
 import os
 
+import httpx
 from fastapi import Depends, FastAPI, Header
 from fastapi.responses import JSONResponse
 
@@ -9,8 +10,36 @@ from src.scan_service import ScanExecutionError, ScanService, get_scan_service
 app = FastAPI(title="lead-engine", version="0.1.0")
 
 
+def _obituary_engine_base_url() -> str:
+    return os.getenv("OBITUARY_ENGINE_BASE_URL", "").rstrip("/")
+
+
 def _obituary_engine_configured() -> bool:
-    return bool(os.getenv("OBITUARY_ENGINE_BASE_URL") or os.getenv("REAPER_BASE_URL"))
+    return bool(_obituary_engine_base_url())
+
+
+def _obituary_engine_ready() -> tuple[bool, str | None]:
+    base_url = _obituary_engine_base_url()
+    if not base_url:
+        return False, "missing_configuration"
+
+    try:
+        response = httpx.get(f"{base_url}/health", timeout=2.0)
+    except httpx.HTTPError:
+        return False, "unreachable"
+
+    if response.status_code != 200:
+        return False, f"http_{response.status_code}"
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return False, "invalid_health_payload"
+
+    if payload.get("status") != "ok":
+        return False, "unhealthy"
+
+    return True, None
 
 
 @app.get("/health")
@@ -40,6 +69,22 @@ def readiness() -> JSONResponse | dict[str, object]:
                 "status": "not_ready",
                 "service": "lead-engine",
                 "missing_configuration": missing,
+            },
+        )
+
+    obituary_engine_ready, obituary_engine_reason = _obituary_engine_ready()
+    if not obituary_engine_ready:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": "lead-engine",
+                "dependency_failures": [
+                    {
+                        "dependency": "obituary_intelligence_engine",
+                        "reason": obituary_engine_reason,
+                    }
+                ],
             },
         )
 

@@ -2,7 +2,12 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { createDefaultMapping, DEFAULT_TENANT_ID, FileTokenStore } = require("../src/tokenStore");
+const {
+  createDefaultMapping,
+  DEFAULT_STATE_PATH,
+  DEFAULT_TENANT_ID,
+  FileTokenStore,
+} = require("../src/tokenStore");
 
 describe("FileTokenStore", () => {
   it("persists tokens and board state to disk", async () => {
@@ -52,12 +57,20 @@ describe("FileTokenStore", () => {
       columns: {
         deceased_name: "name",
         owner_name: "owner_column",
-        property_address: createDefaultMapping().columns.property_address,
-        contact_count: createDefaultMapping().columns.contact_count,
-        tags: createDefaultMapping().columns.tags,
       },
     });
     expect(tenantState.scan_runs).toEqual([{ scan_id: "scan-1", status: "completed" }]);
     expect(tenantState.deliveries).toEqual([{ delivery_id: "delivery-1", status: "created" }]);
+  });
+
+  it("uses CRM_ADAPTER_STATE_PATH when no explicit file path is provided", () => {
+    process.env.CRM_ADAPTER_STATE_PATH = "/tmp/lli-saas-crm-adapter-state.json";
+
+    const store = new FileTokenStore();
+
+    expect(store.filePath).toBe("/tmp/lli-saas-crm-adapter-state.json");
+
+    delete process.env.CRM_ADAPTER_STATE_PATH;
+    expect(DEFAULT_STATE_PATH).toBe("/var/lib/lli-saas/crm-adapter/monday-state.json");
   });
 });

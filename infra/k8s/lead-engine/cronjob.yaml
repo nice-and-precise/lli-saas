@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lead-engine-daily-scan
+spec:
+  schedule: "0 12 * * *"
+  timeZone: "America/Chicago"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: lead-engine-daily-scan
+              image: curlimages/curl:8.12.1
+              args:
+                - /bin/sh
+                - -c
+                - >
+                  curl --fail --silent --show-error
+                  -H "Content-Type: application/json"
+                  -H "x-tenant-id: pilot"
+                  -d '{"owner_limit":10000,"lookback_days":7,"source_ids":[]}'
+                  http://lead-engine:8000/run-scan

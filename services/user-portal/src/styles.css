@@ -114,6 +114,14 @@ a {
   font-size: 1rem;
 }
 
+.auth-form select {
+  border: 1px solid rgba(19, 33, 43, 0.14);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 1rem;
+  background: #fff;
+}
+
 .auth-form button {
   border: none;
   border-radius: 999px;
@@ -193,6 +201,12 @@ a {
   border-radius: 18px;
   background: rgba(246, 243, 237, 0.8);
   border: 1px solid rgba(19, 33, 43, 0.08);
+}
+
+.mapping-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 @media (max-width: 640px) {

@@ -10,7 +10,7 @@ FastAPI orchestration service for the canonical `run_scan()` flow.
 
 ## Runtime
 
-- `POST /run-scan` accepts an optional `owner_limit` and orchestrates:
+- `POST /run-scan` accepts `owner_limit` plus obituary scan options (`lookback_days`, `reference_date`, `source_ids`) and orchestrates:
   1. owner fetch from the CRM adapter
   2. canonical owner validation
   3. obituary intelligence execution
@@ -18,10 +18,21 @@ FastAPI orchestration service for the canonical `run_scan()` flow.
 - `GET /contract` exposes the canonical contract artifact paths for `Lead`, `OwnerRecord`, and `ScanResult`.
 - Set `CRM_ADAPTER_BASE_URL` to the running `crm-adapter` base URL.
 - Set `OBITUARY_ENGINE_BASE_URL` to the upstream obituary engine base URL.
-  - `REAPER_BASE_URL` remains a legacy fallback for the wrapped Reaper runtime.
+- `GET /ready` verifies both required configuration and upstream obituary-engine reachability through `/health`.
+
+Example request:
+
+```json
+{
+  "owner_limit": 1000,
+  "lookback_days": 7,
+  "reference_date": "2026-03-12",
+  "source_ids": ["kwbg_boone", "the_gazette"]
+}
+```
 
 ## Notes
 
 - `lead-engine` does not own the customer owner corpus.
 - Owner data is fetched fresh from CRM for every scan.
-- The wrapper around the legacy Reaper concept is exposed internally as `obituary_intelligence_engine`.
+- The obituary engine speaks the canonical lead contract directly; `lead-engine` no longer performs legacy Reaper payload translation.

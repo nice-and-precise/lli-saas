@@ -26,6 +26,11 @@ spec:
               value: "change-me"
             - name: MONDAY_REDIRECT_URI
               value: "http://crm-adapter:3000/auth/callback"
+            - name: CRM_ADAPTER_STATE_PATH
+              value: "/var/lib/lli-saas/crm-adapter/monday-state.json"
+          volumeMounts:
+            - name: crm-adapter-state
+              mountPath: "/var/lib/lli-saas/crm-adapter"
           resources:
             requests:
               cpu: 100m
@@ -34,6 +39,10 @@ spec:
             httpGet:
               path: /ready
               port: 3000
+      volumes:
+        - name: crm-adapter-state
+          persistentVolumeClaim:
+            claimName: crm-adapter-state
           livenessProbe:
             httpGet:
               path: /ready

@@ -6,23 +6,30 @@ import App from "../src/App";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  delete globalThis.__LLI_RUNTIME_CONFIG__;
 });
 
-test("renders live dashboard status and runs the obituary scan flow", async () => {
+test("renders live dashboard status, saves mapping, and runs the obituary scan flow", async () => {
+  globalThis.__LLI_RUNTIME_CONFIG__ = {
+    crmAdapterBaseUrl: "https://crm-adapter.example.com",
+    leadEngineBaseUrl: "https://lead-engine.example.com",
+  };
+
   const fetchMock = vi
     .spyOn(globalThis, "fetch")
     .mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         tenant_id: "pilot",
-        board: { id: "board-1", name: "Pilot Leads" },
-        deliveries: [{ id: "delivery-1", item_name: "Pat Example - 123 County Road", status: "created", scan_id: "scan-1" }],
+        board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
+        deliveries: [{ id: "delivery-1", item_name: "Pat Example - Boone County", status: "created", scan_id: "scan-1", summary: { tier: "hot" } }],
         scan_runs: [{ scan_id: "scan-1", last_delivery_status: "created" }],
         latest_delivery: {
           id: "delivery-1",
-          item_name: "Pat Example - 123 County Road",
+          item_name: "Pat Example - Boone County",
           status: "created",
           scan_id: "scan-1",
+          summary: { tier: "hot", match_score: 96.2, heir_count: 1 },
         },
       }),
     })
@@ -30,10 +37,32 @@ test("renders live dashboard status and runs the obituary scan flow", async () =
       ok: true,
       json: async () => ({
         mapping: {
-          item_name_strategy: "deceased_name_address",
+          item_name_strategy: "deceased_name_county",
           columns: {
             deceased_name: "name",
-            owner_name: "owner_column",
+            tier: "status",
+          },
+        },
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        boards: [{ id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] }],
+        selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tenant_id: "pilot",
+        board_id: "board-1",
+        mapping: {
+          item_name_strategy: "deceased_name_county",
+          columns: {
+            deceased_name: "name",
+            tier: "status",
+            obituary_url: "obit_link",
           },
         },
       }),
@@ -54,14 +83,15 @@ test("renders live dashboard status and runs the obituary scan flow", async () =
       ok: true,
       json: async () => ({
         tenant_id: "pilot",
-        board: { id: "board-1", name: "Pilot Leads" },
-        deliveries: [{ id: "delivery-2", item_name: "Taylor Example - 456 Ranch Road", status: "created", scan_id: "scan-2" }],
+        board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
+        deliveries: [{ id: "delivery-2", item_name: "Taylor Example - Boone County", status: "created", scan_id: "scan-2", summary: { tier: "pending_review" } }],
         scan_runs: [{ scan_id: "scan-2", last_delivery_status: "created" }],
         latest_delivery: {
           id: "delivery-2",
-          item_name: "Taylor Example - 456 Ranch Road",
+          item_name: "Taylor Example - Boone County",
           status: "created",
           scan_id: "scan-2",
+          summary: { tier: "pending_review", match_score: 89.0, heir_count: 1 },
         },
       }),
     })
@@ -69,12 +99,20 @@ test("renders live dashboard status and runs the obituary scan flow", async () =
       ok: true,
       json: async () => ({
         mapping: {
-          item_name_strategy: "deceased_name_address",
+          item_name_strategy: "deceased_name_county",
           columns: {
             deceased_name: "name",
-            owner_name: "owner_column",
+            tier: "status",
+            obituary_url: "obit_link",
           },
         },
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        boards: [{ id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] }],
+        selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
       }),
     });
 
@@ -88,7 +126,21 @@ test("renders live dashboard status and runs the obituary scan flow", async () =
   await waitFor(() =>
     expect(screen.getAllByText(/pilot leads/i).length).toBeGreaterThan(0),
   );
-  expect(screen.getByText(/deceased_name_address/i)).toBeInTheDocument();
+  expect(screen.getAllByText(/deceased_name_county/i).length).toBeGreaterThan(0);
+
+  fireEvent.change(screen.getByLabelText(/^obituary_url$/i), {
+    target: { value: "obit_link" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /save mapping/i }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://crm-adapter.example.com/mapping",
+      expect.objectContaining({
+        method: "PUT",
+      }),
+    ),
+  );
 
   fireEvent.click(screen.getByRole("button", { name: /run obituary scan/i }));
 
@@ -96,7 +148,7 @@ test("renders live dashboard status and runs the obituary scan flow", async () =
     expect(screen.getAllByText(/scan-2/i).length).toBeGreaterThan(0),
   );
   expect(fetchMock).toHaveBeenCalledWith(
-    "http://localhost:8000/run-scan",
+    "https://lead-engine.example.com/run-scan",
     expect.objectContaining({
       method: "POST",
     }),

@@ -2,17 +2,12 @@ const fs = require("fs/promises");
 const path = require("path");
 
 const DEFAULT_TENANT_ID = "pilot";
+const DEFAULT_STATE_PATH = "/var/lib/lli-saas/crm-adapter/monday-state.json";
 
 function createDefaultMapping() {
   return {
-    item_name_strategy: "deceased_name_address",
-    columns: {
-      deceased_name: "name",
-      owner_name: "text",
-      property_address: "text",
-      contact_count: "numbers",
-      tags: "text",
-    },
+    item_name_strategy: "deceased_name_county",
+    columns: {},
   };
 }
 
@@ -104,10 +99,9 @@ function mergeTenantState(currentTenantState, partialTenantState = {}) {
         ? createDefaultMapping()
         : partialTenantState.board_mapping
           ? {
-              ...currentTenantState.board_mapping,
+              ...createDefaultMapping(),
               ...partialTenantState.board_mapping,
               columns: {
-                ...currentTenantState.board_mapping.columns,
                 ...(partialTenantState.board_mapping.columns ?? {}),
               },
             }
@@ -201,7 +195,8 @@ class FileTokenStore {
   constructor(options = {}) {
     this.filePath =
       options.filePath ??
-      path.resolve(process.cwd(), "data", "monday-state.json");
+      process.env.CRM_ADAPTER_STATE_PATH ??
+      DEFAULT_STATE_PATH;
   }
 
   async save(key, token) {
@@ -279,6 +274,7 @@ class FileTokenStore {
 }
 
 module.exports = {
+  DEFAULT_STATE_PATH,
   DEFAULT_TENANT_ID,
   FileTokenStore,
   MemoryTokenStore,

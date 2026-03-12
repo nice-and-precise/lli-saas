@@ -6,9 +6,10 @@ from uuid import uuid4
 from src.contracts import DeliverySummary, RunScanRequest, ScanError, ScanResult
 from src.crm_adapter import CRMAdapterClient, CRMAdapterError
 from src.obituary_engine import (
-    LegacyReaperObituaryEngine,
+    HttpObituaryEngine,
     ObituaryEngine,
     ObituaryEngineError,
+    ObituaryEngineScanRequest,
 )
 
 
@@ -49,7 +50,15 @@ class ScanService:
         owner_records = owner_fetch_response.owners
 
         try:
-            obituary_scan_result = self.obituary_engine.run_scan(owner_records, scan_id)
+            obituary_scan_result = self.obituary_engine.run_scan(
+                ObituaryEngineScanRequest(
+                    scan_id=scan_id,
+                    owner_records=owner_records,
+                    lookback_days=request.lookback_days,
+                    reference_date=request.reference_date,
+                    source_ids=request.source_ids,
+                )
+            )
         except ObituaryEngineError as exc:
             raise ScanExecutionError(
                 status_code=502,
@@ -164,5 +173,5 @@ class ScanService:
 def get_scan_service() -> ScanService:
     return ScanService(
         crm_adapter_client=CRMAdapterClient(),
-        obituary_engine=LegacyReaperObituaryEngine(),
+        obituary_engine=HttpObituaryEngine(),
     )

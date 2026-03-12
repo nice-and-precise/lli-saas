@@ -22,46 +22,85 @@ OWNER_RECORD_CONTRACT_PATH = _resolve_contract_path("owner-record.schema.json")
 SCAN_RESULT_CONTRACT_PATH = _resolve_contract_path("scan-result.schema.json")
 
 
-class PropertyAddress(BaseModel):
+class LeadProperty(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    address_line_1: str
-    city: str
-    state: str
-    postal_code: str
-    county: str
+    county: str | None = None
+    state: str | None = None
+    acres: float | None = None
+    parcel_ids: list[str] = Field(default_factory=list)
+    address_line_1: str | None = None
+    city: str | None = None
+    postal_code: str | None = None
+    operator_name: str | None = None
 
 
-class LeadContact(BaseModel):
+class HeirRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str
-    relationship: str
-    phone: str = ""
-    email: str = ""
-    mailing_address: str = ""
+    name: str = Field(min_length=1)
+    relationship: str = Field(min_length=1)
+    location_city: str | None = None
+    location_state: str | None = None
+    out_of_state: bool = False
+    phone: str | None = None
+    email: str | None = None
+    mailing_address: str | None = None
+    executor: bool = False
+
+
+class ObituaryMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+    published_at: str | None = None
+    death_date: str | None = None
+    deceased_city: str | None = None
+    deceased_state: str | None = None
+
+
+class MatchMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    score: float
+    last_name_score: float
+    first_name_score: float
+    location_bonus_applied: bool = False
+    status: Literal["auto_confirmed", "pending_review"]
 
 
 class Lead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    scan_id: str
-    source: str
+    scan_id: str = Field(min_length=1)
+    source: str = Field(min_length=1)
     run_started_at: str
     run_completed_at: str
-    owner_name: str
-    deceased_name: str
-    property: PropertyAddress
-    contacts: list[LeadContact]
-    notes: list[str]
-    tags: list[str]
-    raw_artifacts: list[str]
+    owner_id: str = Field(min_length=1)
+    owner_name: str = Field(min_length=1)
+    deceased_name: str = Field(min_length=1)
+    property: LeadProperty
+    heirs: list[HeirRecord] = Field(default_factory=list)
+    obituary: ObituaryMetadata
+    match: MatchMetadata
+    tier: Literal["hot", "warm", "pending_review", "low_signal"]
+    out_of_state_heir_likely: bool = False
+    out_of_state_states: list[str] = Field(default_factory=list)
+    executor_mentioned: bool = False
+    unexpected_death: bool = False
+    notes: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    raw_artifacts: list[str] = Field(default_factory=list)
 
 
 class RunScanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     owner_limit: int = Field(default=10000, ge=1, le=10000)
+    lookback_days: int = Field(default=7, ge=1, le=30)
+    reference_date: str | None = None
+    source_ids: list[str] = Field(default_factory=list)
 
 
 class DeliverySummary(BaseModel):

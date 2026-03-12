@@ -1,3 +1,5 @@
+import os
+
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 
@@ -9,7 +11,34 @@ app = FastAPI(title="lead-engine", version="0.1.0")
 
 @app.get("/health")
 def healthcheck() -> dict[str, str]:
-    return {"status": "ok", "service": "lead-engine"}
+    return {
+        "status": "ok",
+        "service": "lead-engine",
+        "reaper_base_url_configured": str(bool(os.getenv("REAPER_BASE_URL"))).lower(),
+    }
+
+
+@app.get("/ready", response_model=None)
+def readiness() -> JSONResponse | dict[str, object]:
+    missing = []
+
+    if not os.getenv("REAPER_BASE_URL"):
+        missing.append("REAPER_BASE_URL")
+
+    if missing:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": "lead-engine",
+                "missing_configuration": missing,
+            },
+        )
+
+    return {
+        "status": "ready",
+        "service": "lead-engine",
+    }
 
 
 @app.get("/contract")

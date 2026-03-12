@@ -20,16 +20,23 @@ spec:
           env:
             - name: PORT
               value: "3000"
+            - name: LEAD_ENGINE_BASE_URL
+              value: "http://lead-engine:8000"
+            - name: MONDAY_CLIENT_ID
+              value: "change-me"
+            - name: MONDAY_CLIENT_SECRET
+              value: "change-me"
+            - name: MONDAY_REDIRECT_URI
+              value: "http://crm-adapter:3000/auth/callback"
           resources:
             requests:
               cpu: 100m
               memory: 128Mi
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 3000
           livenessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 3000
-

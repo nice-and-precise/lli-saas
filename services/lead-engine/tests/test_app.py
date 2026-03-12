@@ -11,11 +11,29 @@ from src.scan_service import ScanService, get_scan_service
 client = TestClient(app)
 
 
-def test_healthcheck() -> None:
+def test_healthcheck(monkeypatch) -> None:
+    monkeypatch.setenv("REAPER_BASE_URL", "http://reaper:8080")
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "lead-engine"}
+    assert response.json() == {
+        "status": "ok",
+        "service": "lead-engine",
+        "reaper_base_url_configured": "true",
+    }
+
+
+def test_readiness_rejects_missing_reaper_configuration(monkeypatch) -> None:
+    monkeypatch.delenv("REAPER_BASE_URL", raising=False)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "service": "lead-engine",
+        "missing_configuration": ["REAPER_BASE_URL"],
+    }
 
 
 def test_contract_endpoint_exposes_shared_schema_path() -> None:

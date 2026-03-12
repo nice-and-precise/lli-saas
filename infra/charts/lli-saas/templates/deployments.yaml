@@ -18,6 +18,13 @@ spec:
           image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
           ports:
             - containerPort: {{ $svc.port }}
+{{- if $svc.env }}
+          env:
+{{- range $envKey, $envValue := $svc.env }}
+            - name: {{ $envKey }}
+              value: {{ $envValue | quote }}
+{{- end }}
+{{- end }}
           resources:
 {{ toYaml $svc.resources | indent 12 }}
 {{- if $svc.probes.enabled }}
@@ -32,4 +39,3 @@ spec:
 {{- end }}
 ---
 {{- end }}
-

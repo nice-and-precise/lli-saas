@@ -97,6 +97,34 @@ function createStatusSnapshot(state, tenantId) {
   };
 }
 
+function createRuntimeVisibility({
+  leadEngineBaseUrl,
+  tokenStore,
+  mondayConfig,
+}) {
+  return {
+    lead_engine_base_url: leadEngineBaseUrl,
+    monday_oauth_configured: Object.values(mondayConfig).every(Boolean),
+    token_store_path: tokenStore.filePath ?? "memory",
+  };
+}
+
+function getReadinessIssues({ leadEngineBaseUrl, mondayConfig }) {
+  const issues = [];
+
+  if (!leadEngineBaseUrl) {
+    issues.push("LEAD_ENGINE_BASE_URL");
+  }
+
+  Object.entries(mondayConfig).forEach(([key, value]) => {
+    if (!value) {
+      issues.push(key);
+    }
+  });
+
+  return issues;
+}
+
 async function getPersistedState(tokenStore, tenantId = DEFAULT_TENANT_ID) {
   if (typeof tokenStore.getState === "function") {
     const state = await tokenStore.getState();
@@ -158,12 +186,17 @@ function createApp(options = {}) {
   const tokenStore = options.tokenStore ?? new FileTokenStore();
   const fetchImpl = options.fetchImpl ?? fetch;
   const leadEngineBaseUrl = options.leadEngineBaseUrl ?? process.env.LEAD_ENGINE_BASE_URL ?? "http://localhost:8000";
+  const mondayConfig = {
+    MONDAY_CLIENT_ID: options.clientId ?? process.env.MONDAY_CLIENT_ID ?? "",
+    MONDAY_CLIENT_SECRET: options.clientSecret ?? process.env.MONDAY_CLIENT_SECRET ?? "",
+    MONDAY_REDIRECT_URI: options.redirectUri ?? process.env.MONDAY_REDIRECT_URI ?? "",
+  };
   const mondayClient =
     options.mondayClient ??
     new MondayClient({
-      clientId: options.clientId ?? process.env.MONDAY_CLIENT_ID,
-      clientSecret: options.clientSecret ?? process.env.MONDAY_CLIENT_SECRET,
-      redirectUri: options.redirectUri ?? process.env.MONDAY_REDIRECT_URI,
+      clientId: mondayConfig.MONDAY_CLIENT_ID,
+      clientSecret: mondayConfig.MONDAY_CLIENT_SECRET,
+      redirectUri: mondayConfig.MONDAY_REDIRECT_URI,
       apiBaseUrl: options.apiBaseUrl ?? process.env.MONDAY_API_BASE_URL,
     });
 
@@ -293,7 +326,35 @@ function createApp(options = {}) {
   }
 
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "crm-adapter" });
+    res.json({
+      status: "ok",
+      service: "crm-adapter",
+      ...createRuntimeVisibility({
+        leadEngineBaseUrl,
+        tokenStore,
+        mondayConfig,
+      }),
+    });
+  });
+
+  app.get("/ready", (_req, res) => {
+    const missingConfiguration = getReadinessIssues({
+      leadEngineBaseUrl,
+      mondayConfig,
+    });
+
+    if (missingConfiguration.length > 0) {
+      return res.status(503).json({
+        status: "not_ready",
+        service: "crm-adapter",
+        missing_configuration: missingConfiguration,
+      });
+    }
+
+    return res.json({
+      status: "ready",
+      service: "crm-adapter",
+    });
   });
 
   app.get("/contract", (_req, res) => {

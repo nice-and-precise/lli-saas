@@ -37,6 +37,60 @@ function buildLead(overrides = {}) {
 }
 
 describe("crm-adapter auth routes", () => {
+  it("reports pilot runtime visibility on /health", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-health-${Date.now()}.json`),
+    });
+    const app = createApp({
+      mondayClient,
+      tokenStore,
+      leadEngineBaseUrl: "http://lead-engine",
+      clientId: "client-id",
+      clientSecret: "secret",
+      redirectUri: "http://localhost:3000/auth/callback",
+    });
+
+    const response = await request(app).get("/health");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      status: "ok",
+      service: "crm-adapter",
+      lead_engine_base_url: "http://lead-engine",
+      monday_oauth_configured: true,
+      token_store_path: tokenStore.filePath,
+    });
+  });
+
+  it("fails readiness when pilot dependencies are not configured", async () => {
+    const app = createApp({
+      mondayClient: {
+        getAuthorizationUrl: vi.fn(),
+      },
+      leadEngineBaseUrl: "",
+      clientId: "",
+      clientSecret: "",
+      redirectUri: "",
+    });
+
+    const response = await request(app).get("/ready");
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({
+      status: "not_ready",
+      service: "crm-adapter",
+      missing_configuration: [
+        "LEAD_ENGINE_BASE_URL",
+        "MONDAY_CLIENT_ID",
+        "MONDAY_CLIENT_SECRET",
+        "MONDAY_REDIRECT_URI",
+      ],
+    });
+  });
+
   it("redirects to Monday OAuth on /auth/login", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(() => "https://auth.monday.com/oauth2/authorize?client_id=test"),

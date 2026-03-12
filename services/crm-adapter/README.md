@@ -11,6 +11,7 @@ Express adapter for Monday OAuth, board discovery, board mapping, tenant-aware d
 
 ## Environment
 
+- `LEAD_ENGINE_BASE_URL` (required for `/first-scan`, defaults to `http://localhost:8000`)
 - `MONDAY_CLIENT_ID`
 - `MONDAY_CLIENT_SECRET`
 - `MONDAY_REDIRECT_URI`
@@ -18,6 +19,14 @@ Express adapter for Monday OAuth, board discovery, board mapping, tenant-aware d
 - `PORT` (optional, defaults to `3000`)
 
 The adapter persists tenant-aware Monday OAuth, selected board, board mapping, scan runs, and delivery state in `data/monday-state.json` by default.
+
+## Pilot Setup Order
+
+1. Start `lead-engine` and confirm `/health`.
+2. Start `crm-adapter` with valid Monday OAuth credentials and `LEAD_ENGINE_BASE_URL`.
+3. Complete Monday OAuth through `/auth/login`.
+4. Discover boards with `GET /boards`, persist a board through `POST /boards/select`, and confirm the mapping through `GET /mapping`.
+5. Start `user-portal` with `VITE_CRM_ADAPTER_BASE_URL` pointing at the adapter, then use the dashboard to run the first scan flow.
 
 ## Routes
 

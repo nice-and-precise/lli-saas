@@ -20,7 +20,9 @@ spec:
           env:
             - name: PORT
               value: "8000"
-            - name: REAPER_BASE_URL
+            - name: CRM_ADAPTER_BASE_URL
+              value: "http://crm-adapter:3000"
+            - name: OBITUARY_ENGINE_BASE_URL
               value: "http://reaper:8080"
           resources:
             requests:

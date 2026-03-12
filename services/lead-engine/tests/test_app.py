@@ -3,51 +3,43 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from src.app import app
-from src.contracts import CONTRACT_PATH, InternalLead, ScanRequest, load_internal_lead_schema
-from src.reaper import RawReaperScanResult, ReaperGatewayError
+from src.contracts import (
+    LEAD_CONTRACT_PATH,
+    OWNER_RECORD_CONTRACT_PATH,
+    SCAN_RESULT_CONTRACT_PATH,
+    Lead,
+    RunScanRequest,
+    load_lead_schema,
+)
+from src.crm_adapter import CRMAdapterError
+from src.obituary_engine import ObituaryEngineError, ObituaryEngineScanResult
+from src.owner_corpus import OwnerFetchResponse, OwnerRecord
 from src.scan_service import ScanService, get_scan_service
 
 
 client = TestClient(app)
 
 
-def test_healthcheck(monkeypatch) -> None:
-    monkeypatch.setenv("REAPER_BASE_URL", "http://reaper:8080")
-    response = client.get("/health")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "status": "ok",
-        "service": "lead-engine",
-        "reaper_base_url_configured": "true",
+def build_owner_record(**overrides) -> OwnerRecord:
+    payload = {
+        "owner_id": "owner-1",
+        "owner_name": "Jordan Example",
+        "county": "Travis",
+        "state": "TX",
+        "acres": 120.5,
+        "parcel_ids": ["parcel-1"],
+        "mailing_state": "TX",
+        "crm_source": "monday",
+        "raw_source_ref": "board:clients:item:owner-1",
     }
+    payload.update(overrides)
+    return OwnerRecord.model_validate(payload)
 
 
-def test_readiness_rejects_missing_reaper_configuration(monkeypatch) -> None:
-    monkeypatch.delenv("REAPER_BASE_URL", raising=False)
-
-    response = client.get("/ready")
-
-    assert response.status_code == 503
-    assert response.json() == {
-        "status": "not_ready",
-        "service": "lead-engine",
-        "missing_configuration": ["REAPER_BASE_URL"],
-    }
-
-
-def test_contract_endpoint_exposes_shared_schema_path() -> None:
-    response = client.get("/contract")
-
-    assert response.status_code == 200
-    assert response.json() == {"contract_path": str(CONTRACT_PATH)}
-    assert Path(response.json()["contract_path"]).is_file()
-
-
-def test_internal_lead_model_matches_shared_schema_expectations() -> None:
+def build_lead(**overrides) -> Lead:
     payload = {
         "scan_id": "scan-1",
-        "source": "reaper",
+        "source": "obituary_intelligence_engine",
         "run_started_at": "2026-03-11T10:00:00Z",
         "run_completed_at": "2026-03-11T10:01:00Z",
         "owner_name": "Jordan Example",
@@ -57,7 +49,7 @@ def test_internal_lead_model_matches_shared_schema_expectations() -> None:
             "city": "Austin",
             "state": "TX",
             "postal_code": "78701",
-            "county": "Travis"
+            "county": "Travis",
         },
         "contacts": [
             {
@@ -65,122 +57,268 @@ def test_internal_lead_model_matches_shared_schema_expectations() -> None:
                 "relationship": "heir",
                 "phone": "555-0100",
                 "email": "casey@example.com",
-                "mailing_address": "PO Box 1"
+                "mailing_address": "PO Box 1",
             }
         ],
         "notes": ["pilot-ready"],
         "tags": ["inheritance"],
-        "raw_artifacts": ["artifact-1.json"]
+        "raw_artifacts": ["artifact-1.json"],
+    }
+    payload.update(overrides)
+    return Lead.model_validate(payload)
+
+
+def test_healthcheck(monkeypatch) -> None:
+    monkeypatch.setenv("CRM_ADAPTER_BASE_URL", "http://crm-adapter:3000")
+    monkeypatch.setenv("OBITUARY_ENGINE_BASE_URL", "http://obituary-engine:8080")
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "service": "lead-engine",
+        "crm_adapter_base_url_configured": "true",
+        "obituary_engine_base_url_configured": "true",
     }
 
-    lead = InternalLead.model_validate(payload)
-    schema = load_internal_lead_schema()
+
+def test_readiness_rejects_missing_required_configuration(monkeypatch) -> None:
+    monkeypatch.delenv("CRM_ADAPTER_BASE_URL", raising=False)
+    monkeypatch.delenv("OBITUARY_ENGINE_BASE_URL", raising=False)
+    monkeypatch.delenv("REAPER_BASE_URL", raising=False)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "service": "lead-engine",
+        "missing_configuration": ["CRM_ADAPTER_BASE_URL", "OBITUARY_ENGINE_BASE_URL"],
+    }
+
+
+def test_contract_endpoint_exposes_canonical_schema_paths() -> None:
+    response = client.get("/contract")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "lead_contract_path": str(LEAD_CONTRACT_PATH),
+        "owner_record_contract_path": str(OWNER_RECORD_CONTRACT_PATH),
+        "scan_result_contract_path": str(SCAN_RESULT_CONTRACT_PATH),
+    }
+    assert Path(response.json()["lead_contract_path"]).is_file()
+    assert Path(response.json()["owner_record_contract_path"]).is_file()
+    assert Path(response.json()["scan_result_contract_path"]).is_file()
+
+
+def test_lead_model_matches_shared_schema_expectations() -> None:
+    lead = build_lead()
+    schema = load_lead_schema()
 
     assert lead.scan_id == "scan-1"
-    assert schema["title"] == "InternalLead"
+    assert schema["title"] == "Lead"
     assert "property" in schema["required"]
 
 
-class StubGateway:
-    def run_scan(self, request: ScanRequest, scan_id: str) -> RawReaperScanResult:
-        assert request.county == "Travis"
-        assert request.state == "TX"
-        assert request.limit == 10
-        assert request.include_contacts is True
-        assert scan_id
+class StubCRMAdapterClient:
+    def __init__(self, *, fail_fetch: bool = False, fail_delivery_for: set[str] | None = None) -> None:
+        self.fail_fetch = fail_fetch
+        self.fail_delivery_for = fail_delivery_for or set()
+        self.delivered_leads: list[Lead] = []
 
-        return RawReaperScanResult.model_validate(
+    def fetch_owner_records(self, *, tenant_id: str, owner_limit: int) -> OwnerFetchResponse:
+        assert tenant_id == "pilot"
+        assert owner_limit == 2
+        if self.fail_fetch:
+            raise CRMAdapterError(
+                code="crm_fetch_transport_error",
+                message="Failed to reach crm-adapter while fetching owner records",
+                details={"error": "connection refused"},
+            )
+
+        return OwnerFetchResponse.model_validate(
             {
-                "source": "reaper",
-                "run_started_at": "2026-03-11T10:00:00Z",
-                "run_completed_at": "2026-03-11T10:01:00Z",
-                "leads": [
-                    {
-                        "owner_name": "Jordan Example",
-                        "deceased_name": "Pat Example",
-                        "property_address": "123 County Road",
-                        "property_city": "Austin",
-                        "property_state": "TX",
-                        "property_postal_code": "78701",
-                        "property_county": "Travis",
-                        "contacts": [
-                            {
-                                "full_name": "Casey Example",
-                                "relationship": "heir",
-                                "phone": "555-0100",
-                                "email": "casey@example.com",
-                                "mailing_address": "PO Box 1",
-                            }
-                        ],
-                        "notes": ["pilot-ready"],
-                        "tags": ["inheritance"],
-                        "artifacts": ["artifact-1.json"],
-                    }
+                "tenant_id": tenant_id,
+                "source_board": {"id": "clients-board", "name": "Clients"},
+                "owner_count": 2,
+                "owners": [
+                    build_owner_record().model_dump(mode="json"),
+                    build_owner_record(
+                        owner_id="owner-2",
+                        owner_name="Taylor Example",
+                        parcel_ids=["parcel-2"],
+                    ).model_dump(mode="json"),
                 ],
             }
         )
 
+    def deliver_lead(self, *, tenant_id: str, lead: Lead) -> dict:
+        assert tenant_id == "pilot"
+        self.delivered_leads.append(lead)
+        if lead.deceased_name in self.fail_delivery_for:
+            raise CRMAdapterError(
+                code="crm_delivery_http_error",
+                message="crm-adapter reported a lead delivery failure",
+                details={"status_code": 502},
+            )
 
-class FailingGateway:
-    def run_scan(self, request: ScanRequest, scan_id: str) -> RawReaperScanResult:
-        raise ReaperGatewayError(
-            code="reaper_transport_error",
-            message="Failed to reach the Reaper service",
-            details={"error": "connection refused"},
+        return {
+            "tenant_id": tenant_id,
+            "board_id": "board-1",
+            "delivery_id": f"delivery-{lead.deceased_name}",
+            "status": "created",
+            "item_id": f"item-{lead.deceased_name}",
+            "item_name": f"{lead.deceased_name} - {lead.property.address_line_1}",
+        }
+
+
+class StubObituaryEngine:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.last_owner_records: list[OwnerRecord] | None = None
+
+    def run_scan(self, owner_records: list[OwnerRecord], scan_id: str) -> ObituaryEngineScanResult:
+        self.last_owner_records = owner_records
+        assert scan_id
+        if self.fail:
+            raise ObituaryEngineError(
+                code="obituary_engine_transport_error",
+                message="Failed to reach obituary_intelligence_engine",
+                details={"error": "connection refused"},
+            )
+
+        leads = [
+            build_lead(scan_id=scan_id),
+            build_lead(
+                scan_id=scan_id,
+                owner_name="Taylor Example",
+                deceased_name="Morgan Example",
+                property={
+                    "address_line_1": "456 Ranch Road",
+                    "city": "Austin",
+                    "state": "TX",
+                    "postal_code": "78702",
+                    "county": "Travis",
+                },
+            ),
+        ]
+        return ObituaryEngineScanResult(
+            source="obituary_intelligence_engine",
+            run_started_at="2026-03-11T10:00:00Z",
+            run_completed_at="2026-03-11T10:01:00Z",
+            leads=leads,
         )
 
 
-def test_run_scan_returns_normalized_internal_leads() -> None:
-    app.dependency_overrides[get_scan_service] = lambda: ScanService(gateway=StubGateway())
-
-    response = client.post(
-        "/run-scan",
-        json={"county": "Travis", "state": "TX", "limit": 10, "include_contacts": True},
+def test_run_scan_orchestrates_owner_fetch_obituary_matching_and_delivery() -> None:
+    crm_adapter_client = StubCRMAdapterClient()
+    obituary_engine = StubObituaryEngine()
+    app.dependency_overrides[get_scan_service] = lambda: ScanService(
+        crm_adapter_client=crm_adapter_client,
+        obituary_engine=obituary_engine,
     )
+
+    response = client.post("/run-scan", json={"owner_limit": 2})
 
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "completed"
-    assert payload["lead_count"] == 1
-    assert payload["errors"] == []
-    assert payload["leads"][0]["scan_id"] == payload["scan_id"]
-    assert payload["leads"][0]["source"] == "reaper"
-    assert payload["leads"][0]["property"] == {
-        "address_line_1": "123 County Road",
-        "city": "Austin",
-        "state": "TX",
-        "postal_code": "78701",
-        "county": "Travis",
+    assert payload["owner_count"] == 2
+    assert payload["lead_count"] == 2
+    assert payload["delivery_summary"] == {
+        "created": 2,
+        "skipped_duplicate": 0,
+        "failed": 0,
     }
-    assert payload["leads"][0]["contacts"][0]["name"] == "Casey Example"
-    assert "property_address" not in payload["leads"][0]
+    assert payload["errors"] == []
+    assert payload["leads"][0]["source"] == "obituary_intelligence_engine"
+    assert obituary_engine.last_owner_records is not None
+    assert obituary_engine.last_owner_records[0].owner_name == "Jordan Example"
+    assert len(crm_adapter_client.delivered_leads) == 2
 
 
 def test_run_scan_rejects_invalid_request_payload() -> None:
-    response = client.post("/run-scan", json={"state": "TX"})
+    response = client.post("/run-scan", json={"owner_limit": 10001})
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == ["body", "county"]
+    assert response.json()["detail"][0]["loc"] == ["body", "owner_limit"]
 
 
-def test_run_scan_returns_structured_runtime_failures() -> None:
-    app.dependency_overrides[get_scan_service] = lambda: ScanService(gateway=FailingGateway())
+def test_run_scan_returns_structured_failures_when_crm_fetch_fails() -> None:
+    app.dependency_overrides[get_scan_service] = lambda: ScanService(
+        crm_adapter_client=StubCRMAdapterClient(fail_fetch=True),
+        obituary_engine=StubObituaryEngine(),
+    )
 
-    response = client.post("/run-scan", json={"county": "Travis", "state": "TX"})
+    response = client.post("/run-scan", json={"owner_limit": 2})
 
     app.dependency_overrides.clear()
 
     assert response.status_code == 502
     payload = response.json()
     assert payload["status"] == "failed"
+    assert payload["owner_count"] == 0
     assert payload["lead_count"] == 0
-    assert payload["leads"] == []
+    assert payload["delivery_summary"] == {
+        "created": 0,
+        "skipped_duplicate": 0,
+        "failed": 0,
+    }
     assert payload["errors"] == [
         {
-            "code": "reaper_transport_error",
-            "message": "Failed to reach the Reaper service",
+            "stage": "crm_fetch",
+            "code": "crm_fetch_transport_error",
+            "message": "Failed to reach crm-adapter while fetching owner records",
             "details": {"error": "connection refused"},
         }
     ]
+
+
+def test_run_scan_returns_structured_failures_when_obituary_engine_fails() -> None:
+    app.dependency_overrides[get_scan_service] = lambda: ScanService(
+        crm_adapter_client=StubCRMAdapterClient(),
+        obituary_engine=StubObituaryEngine(fail=True),
+    )
+
+    response = client.post("/run-scan", json={"owner_limit": 2})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 502
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert payload["owner_count"] == 2
+    assert payload["lead_count"] == 0
+    assert payload["errors"] == [
+        {
+            "stage": "obituary_engine",
+            "code": "obituary_engine_transport_error",
+            "message": "Failed to reach obituary_intelligence_engine",
+            "details": {"error": "connection refused"},
+        }
+    ]
+
+
+def test_run_scan_returns_partial_result_when_some_deliveries_fail() -> None:
+    app.dependency_overrides[get_scan_service] = lambda: ScanService(
+        crm_adapter_client=StubCRMAdapterClient(fail_delivery_for={"Morgan Example"}),
+        obituary_engine=StubObituaryEngine(),
+    )
+
+    response = client.post("/run-scan", json={"owner_limit": 2})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "partial"
+    assert payload["delivery_summary"] == {
+        "created": 1,
+        "skipped_duplicate": 0,
+        "failed": 1,
+    }
+    assert payload["errors"][0]["stage"] == "lead_delivery"
+    assert payload["errors"][0]["code"] == "crm_delivery_http_error"

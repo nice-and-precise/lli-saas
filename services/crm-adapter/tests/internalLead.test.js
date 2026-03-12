@@ -1,18 +1,18 @@
 const fs = require("fs");
 
-const { getInternalLeadSchemaPath, validateInternalLead } = require("../src/internalLead");
+const { getLeadSchemaPath, validateLead } = require("../src/leadContract");
 
-describe("internal lead contract helpers", () => {
+describe("lead contract helpers", () => {
   it("points to the shared schema artifact", () => {
-    const schemaPath = getInternalLeadSchemaPath();
+    const schemaPath = getLeadSchemaPath();
 
     expect(fs.existsSync(schemaPath)).toBe(true);
   });
 
-  it("accepts a valid internal lead payload", () => {
+  it("accepts a valid lead payload", () => {
     const lead = {
       scan_id: "scan-1",
-      source: "reaper",
+      source: "obituary_intelligence_engine",
       run_started_at: "2026-03-11T10:00:00Z",
       run_completed_at: "2026-03-11T10:01:00Z",
       owner_name: "Jordan Example",
@@ -38,15 +38,15 @@ describe("internal lead contract helpers", () => {
       raw_artifacts: ["artifact-1.json"],
     };
 
-    expect(validateInternalLead(lead)).toEqual(lead);
+    expect(validateLead(lead)).toEqual(lead);
   });
 
-  it("rejects a malformed internal lead payload", () => {
+  it("rejects a malformed lead payload", () => {
     expect(() =>
-      validateInternalLead({
+      validateLead({
         scan_id: "",
         property: {},
       }),
-    ).toThrow("Invalid internal lead field: scan_id");
+    ).toThrow("Invalid lead field: scan_id");
   });
 });

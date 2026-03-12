@@ -1,6 +1,6 @@
 # lead-engine
 
-Phase 2 FastAPI service for the lead engine scan workflow.
+FastAPI orchestration service for the canonical `run_scan()` flow.
 
 ## Commands
 
@@ -10,10 +10,18 @@ Phase 2 FastAPI service for the lead engine scan workflow.
 
 ## Runtime
 
-- `POST /run-scan` accepts `county`, `state`, optional `limit`, and `include_contacts`.
-- Set `REAPER_BASE_URL` to the upstream Reaper service base URL so `lead-engine` can forward scan requests.
+- `POST /run-scan` accepts an optional `owner_limit` and orchestrates:
+  1. owner fetch from the CRM adapter
+  2. canonical owner validation
+  3. obituary intelligence execution
+  4. canonical lead delivery back through the CRM adapter
+- `GET /contract` exposes the canonical contract artifact paths for `Lead`, `OwnerRecord`, and `ScanResult`.
+- Set `CRM_ADAPTER_BASE_URL` to the running `crm-adapter` base URL.
+- Set `OBITUARY_ENGINE_BASE_URL` to the upstream obituary engine base URL.
+  - `REAPER_BASE_URL` remains a legacy fallback for the wrapped Reaper runtime.
 
-## Pilot Notes
+## Notes
 
-- `crm-adapter` calls `lead-engine` through `LEAD_ENGINE_BASE_URL`, so the configured host and port must be reachable from the adapter runtime.
-- The Phase 4 pilot flow assumes `/run-scan` is the only scan entrypoint used by the portal-backed workflow.
+- `lead-engine` does not own the customer owner corpus.
+- Owner data is fetched fresh from CRM for every scan.
+- The wrapper around the legacy Reaper concept is exposed internally as `obituary_intelligence_engine`.

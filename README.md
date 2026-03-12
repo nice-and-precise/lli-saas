@@ -1,15 +1,17 @@
 # lli-saas
 
-`lli-saas` is a fresh-start monorepo for the inherited-land lead delivery pilot. It contains a lead engine API, a Monday.com CRM adapter, a React operator portal, and deployment infrastructure.
+`lli-saas` is an obituary intelligence and CRM lead delivery monorepo for land brokers. Customer CRM data is the owner-data source of truth. The platform fetches owner records from CRM at scan time, passes canonical owner records into the obituary intelligence layer, generates canonical leads, and delivers those leads back into CRM.
+
+The architectural source of truth for this repo is [docs/system-architecture.md](/Users/jordan/Desktop/LLI_v1/docs/system-architecture.md).
 
 ## Layout
 
-- `services/lead-engine` — FastAPI scan execution boundary for the Reaper wrapper
-- `services/crm-adapter` — Express Monday OAuth, delivery, and first-scan orchestration adapter
-- `services/user-portal` — Vite React operator portal for mapping, status, and first scan
+- `services/lead-engine` — FastAPI orchestration entrypoint that runs `run_scan()` and coordinates owner fetch, obituary intelligence, and lead delivery
+- `services/crm-adapter` — Express Monday OAuth, source-owner fetch, destination-board mapping, and lead delivery adapter
+- `services/user-portal` — Vite React operator portal for Monday setup, status, and scan launch
 - `infra` — Kubernetes manifests and Helm chart for the pilot stack
-- `docs` — onboarding, pilot runbook, and planning source documents
-- `.planning` — GSD-compatible project planning state
+- `docs` — architecture, onboarding, and pilot runbooks
+- `.planning` — GSD-compatible planning state
 
 ## Local startup
 
@@ -24,4 +26,4 @@
 
 ## Planning
 
-Phase planning artifacts live in `.planning/` and the current Phase 1 task list is in [PLANS.md](/Users/jordan/Desktop/LLI_v1/PLANS.md).
+Phase planning artifacts live in `.planning/`.

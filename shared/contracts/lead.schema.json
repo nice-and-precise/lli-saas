@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lli-saas.local/contracts/internal-lead.schema.json",
-  "title": "InternalLead",
+  "$id": "https://lli-saas.local/contracts/lead.schema.json",
+  "title": "Lead",
   "type": "object",
   "additionalProperties": false,
   "required": [

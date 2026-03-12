@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lli-saas.local/contracts/owner-record.schema.json",
+  "title": "OwnerRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "owner_id",
+    "owner_name",
+    "county",
+    "state",
+    "acres",
+    "parcel_ids",
+    "mailing_state",
+    "crm_source",
+    "raw_source_ref"
+  ],
+  "properties": {
+    "owner_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "county": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "acres": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "parcel_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mailing_state": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "crm_source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "raw_source_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

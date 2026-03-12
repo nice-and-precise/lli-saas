@@ -2,13 +2,13 @@ const os = require("os");
 const request = require("supertest");
 const path = require("path");
 
-const { createApp } = require("../src/app");
+const { createApp, SOURCE_OWNER_BOARD_NAME } = require("../src/app");
 const { FileTokenStore } = require("../src/tokenStore");
 
 function buildLead(overrides = {}) {
   return {
     scan_id: "scan-1",
-    source: "reaper",
+    source: "obituary_intelligence_engine",
     run_started_at: "2026-03-11T10:00:00Z",
     run_completed_at: "2026-03-11T10:01:00Z",
     owner_name: "Jordan Example",
@@ -36,8 +36,8 @@ function buildLead(overrides = {}) {
   };
 }
 
-describe("crm-adapter auth routes", () => {
-  it("reports pilot runtime visibility on /health", async () => {
+describe("crm-adapter routes", () => {
+  it("reports runtime visibility on /health", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),
     };
@@ -47,7 +47,6 @@ describe("crm-adapter auth routes", () => {
     const app = createApp({
       mondayClient,
       tokenStore,
-      leadEngineBaseUrl: "http://lead-engine",
       clientId: "client-id",
       clientSecret: "secret",
       redirectUri: "http://localhost:3000/auth/callback",
@@ -59,18 +58,17 @@ describe("crm-adapter auth routes", () => {
     expect(response.body).toEqual({
       status: "ok",
       service: "crm-adapter",
-      lead_engine_base_url: "http://lead-engine",
       monday_oauth_configured: true,
+      source_owner_board_name: SOURCE_OWNER_BOARD_NAME,
       token_store_path: tokenStore.filePath,
     });
   });
 
-  it("fails readiness when pilot dependencies are not configured", async () => {
+  it("fails readiness when Monday dependencies are not configured", async () => {
     const app = createApp({
       mondayClient: {
         getAuthorizationUrl: vi.fn(),
       },
-      leadEngineBaseUrl: "",
       clientId: "",
       clientSecret: "",
       redirectUri: "",
@@ -83,7 +81,6 @@ describe("crm-adapter auth routes", () => {
       status: "not_ready",
       service: "crm-adapter",
       missing_configuration: [
-        "LEAD_ENGINE_BASE_URL",
         "MONDAY_CLIENT_ID",
         "MONDAY_CLIENT_SECRET",
         "MONDAY_REDIRECT_URI",
@@ -128,7 +125,7 @@ describe("crm-adapter auth routes", () => {
     expect(tokenStore.save).toHaveBeenCalledWith("monday_access_token", "token-123");
   });
 
-  it("exposes the shared internal lead contract path", async () => {
+  it("exposes the shared canonical contract paths", async () => {
     const app = createApp({
       mondayClient: {
         getAuthorizationUrl: vi.fn(() => "https://auth.monday.com/oauth2/authorize?client_id=test"),
@@ -138,9 +135,18 @@ describe("crm-adapter auth routes", () => {
     const response = await request(app).get("/contract");
 
     expect(response.statusCode).toBe(200);
-    expect(response.body.contract_path).toBe(
-      path.resolve(__dirname, "..", "..", "..", "shared", "contracts", "internal-lead.schema.json"),
-    );
+    expect(response.body).toEqual({
+      lead_contract_path: path.resolve(__dirname, "..", "..", "..", "shared", "contracts", "lead.schema.json"),
+      owner_record_contract_path: path.resolve(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "shared",
+        "contracts",
+        "owner-record.schema.json",
+      ),
+    });
   });
 
   it("persists OAuth state with the file token store", async () => {
@@ -193,7 +199,91 @@ describe("crm-adapter auth routes", () => {
     expect(mondayClient.listBoards).toHaveBeenCalledWith("token-123");
   });
 
-  it("persists the selected board from discovered boards", async () => {
+  it("returns canonical owner records from the Clients board", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        { id: "clients-board", name: "Clients", columns: [{ id: "county", title: "County" }] },
+      ]),
+      listBoardItems: vi.fn(async () => [
+        {
+          id: "owner-1",
+          name: "Jordan Example",
+          column_values: [
+            { id: "county", text: "Travis", column: { title: "County" } },
+            { id: "state", text: "TX", column: { title: "State" } },
+            { id: "acreage", text: "120.5", column: { title: "Acreage" } },
+            { id: "apn", text: "parcel-1; parcel-2", column: { title: "APN" } },
+            { id: "mail_state", text: "TX", column: { title: "Mail State" } },
+          ],
+        },
+      ]),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-owners-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).get("/owners?limit=500");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      tenant_id: "pilot",
+      source_board: {
+        id: "clients-board",
+        name: "Clients",
+      },
+      owner_count: 1,
+      owners: [
+        {
+          owner_id: "owner-1",
+          owner_name: "Jordan Example",
+          county: "Travis",
+          state: "TX",
+          acres: 120.5,
+          parcel_ids: ["parcel-1", "parcel-2"],
+          mailing_state: "TX",
+          crm_source: "monday",
+          raw_source_ref: "board:clients-board:item:owner-1",
+        },
+      ],
+    });
+    expect(mondayClient.listBoardItems).toHaveBeenCalledWith({
+      token: "token-123",
+      boardId: "clients-board",
+      limit: 500,
+    });
+  });
+
+  it("fails owner fetch when the Clients board is missing", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [{ id: "board-1", name: "Leads", columns: [] }]),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-missing-clients-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).get("/owners");
+
+    expect(response.statusCode).toBe(404);
+    expect(response.body).toEqual({
+      error: "Clients board not found",
+    });
+  });
+
+  it("persists the selected destination board from discovered boards", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),
       listBoards: vi.fn(async () => [
@@ -312,7 +402,7 @@ describe("crm-adapter auth routes", () => {
     expect(tenantState.board_mapping.item_name_strategy).toBe("deceased_name_only");
   });
 
-  it("creates a Monday item from the internal lead contract on the selected board", async () => {
+  it("creates a Monday item from the canonical lead contract on the selected board", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),
       listBoardItems: vi.fn(async () => []),
@@ -350,7 +440,7 @@ describe("crm-adapter auth routes", () => {
         contact_count: 1,
         tags: ["inheritance"],
         scan_id: "scan-1",
-        source: "reaper",
+        source: "obituary_intelligence_engine",
       },
     });
     expect(mondayClient.createItem).toHaveBeenCalledWith({
@@ -365,7 +455,7 @@ describe("crm-adapter auth routes", () => {
     });
   });
 
-  it("rejects malformed internal lead payloads before Monday item creation", async () => {
+  it("rejects malformed lead payloads before Monday item creation", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),
       listBoardItems: vi.fn(async () => []),
@@ -392,7 +482,7 @@ describe("crm-adapter auth routes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({
-      error: "Invalid internal lead field: scan_id",
+      error: "Invalid lead field: scan_id",
     });
     expect(mondayClient.createItem).not.toHaveBeenCalled();
   });
@@ -486,70 +576,6 @@ describe("crm-adapter auth routes", () => {
     expect(response.body.board.id).toBe("board-1");
     expect(response.body.latest_delivery.id).toBe("delivery-1");
     expect(response.body.scan_runs[0].scan_id).toBe("scan-1");
-  });
-
-  it("runs the first scan flow and returns delivery totals", async () => {
-    const mondayClient = {
-      getAuthorizationUrl: vi.fn(),
-      listBoardItems: vi.fn(async () => []),
-      createItem: vi.fn(async ({ itemName }) => ({ id: `${itemName}-id` })),
-    };
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        scan_id: "scan-1",
-        status: "completed",
-        lead_count: 2,
-        leads: [
-          buildLead(),
-          buildLead({
-            deceased_name: "Taylor Example",
-            property: {
-              address_line_1: "456 Ranch Road",
-              city: "Austin",
-              state: "TX",
-              postal_code: "78702",
-              county: "Travis",
-            },
-          }),
-        ],
-      }),
-    }));
-    const tokenStore = new FileTokenStore({
-      filePath: path.join(os.tmpdir(), `lli-saas-first-scan-${Date.now()}.json`),
-    });
-    await tokenStore.saveState({
-      tokens: {
-        monday_access_token: "token-123",
-      },
-      board: {
-        id: "board-1",
-        name: "Leads",
-        columns: [{ id: "name", title: "Name" }],
-      },
-    });
-    const app = createApp({ mondayClient, tokenStore, fetchImpl, leadEngineBaseUrl: "http://lead-engine" });
-
-    const response = await request(app).post("/first-scan").send({
-      county: "Travis",
-      state: "TX",
-      limit: 2,
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "http://lead-engine/run-scan",
-      expect.objectContaining({
-        method: "POST",
-      }),
-    );
-    expect(response.body.scan_id).toBe("scan-1");
-    expect(response.body.totals).toEqual({
-      created: 2,
-      skipped_duplicate: 0,
-      failed: 0,
-    });
-    expect(response.body.status.deliveries).toHaveLength(2);
   });
 
   it("separates persisted state by tenant id", async () => {

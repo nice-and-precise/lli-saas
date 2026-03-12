@@ -128,23 +128,38 @@ describe("MondayClient", () => {
     );
   });
 
-  it("lists board items for duplicate checks", async () => {
-    const post = vi.fn().mockResolvedValue({
-      status: 200,
-      data: {
+  it("lists board items across paginated responses", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 200,
         data: {
-          boards: [
-            {
-              id: "board-1",
-              items_page: {
-                items: [{ id: "item-1", name: "Pat Example - 123 County Road" }],
+          data: {
+            boards: [
+              {
+                id: "board-1",
+                items_page: {
+                  cursor: "cursor-1",
+                  items: [{ id: "item-1", name: "Jordan Example", column_values: [] }],
+                },
               },
-            },
-          ],
+            ],
+          },
         },
-      },
-      headers: {},
-    });
+        headers: {},
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: {
+            next_items_page: {
+              cursor: null,
+              items: [{ id: "item-2", name: "Taylor Example", column_values: [] }],
+            },
+          },
+        },
+        headers: {},
+      });
     const client = new MondayClient({
       clientId: "client-id",
       clientSecret: "secret",
@@ -156,7 +171,11 @@ describe("MondayClient", () => {
       client.listBoardItems({
         token: "token-123",
         boardId: "board-1",
+        limit: 1000,
       }),
-    ).resolves.toEqual([{ id: "item-1", name: "Pat Example - 123 County Road" }]);
+    ).resolves.toEqual([
+      { id: "item-1", name: "Jordan Example", column_values: [] },
+      { id: "item-2", name: "Taylor Example", column_values: [] },
+    ]);
   });
 });

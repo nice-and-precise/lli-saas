@@ -1,15 +1,14 @@
 import { startTransition, useEffect, useState } from "react";
 
 const CRM_ADAPTER_BASE_URL = import.meta.env.VITE_CRM_ADAPTER_BASE_URL ?? "http://localhost:3000";
+const LEAD_ENGINE_BASE_URL = import.meta.env.VITE_LEAD_ENGINE_BASE_URL ?? "http://localhost:8000";
 
 const INITIAL_FORM = {
-  county: "Travis",
-  state: "TX",
-  limit: 5,
+  owner_limit: 1000,
 };
 
-async function fetchJson(path, options = {}) {
-  const response = await fetch(`${CRM_ADAPTER_BASE_URL}${path}`, {
+async function fetchJson(baseUrl, path, options = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
     headers: {
       "Content-Type": "application/json",
       ...(options.headers ?? {}),
@@ -19,7 +18,7 @@ async function fetchJson(path, options = {}) {
   const payload = await response.json();
 
   if (!response.ok) {
-    throw new Error(payload.error ?? `Request failed for ${path}`);
+    throw new Error(payload.error ?? payload.errors?.[0]?.message ?? `Request failed for ${path}`);
   }
 
   return payload;
@@ -46,8 +45,8 @@ export default function DashboardPage() {
 
     try {
       const [statusPayload, mappingResult] = await Promise.allSettled([
-        fetchJson("/status"),
-        fetchJson("/mapping"),
+        fetchJson(CRM_ADAPTER_BASE_URL, "/status"),
+        fetchJson(CRM_ADAPTER_BASE_URL, "/mapping"),
       ]);
 
       if (statusPayload.status === "fulfilled") {
@@ -78,19 +77,16 @@ export default function DashboardPage() {
     refreshDashboard();
   }, []);
 
-  async function handleFirstScan(event) {
+  async function handleRunScan(event) {
     event.preventDefault();
     setRunningScan(true);
     setError("");
 
     try {
-      const result = await fetchJson("/first-scan", {
+      const result = await fetchJson(LEAD_ENGINE_BASE_URL, "/run-scan", {
         method: "POST",
         body: JSON.stringify({
-          county: form.county,
-          state: form.state,
-          limit: Number(form.limit),
-          include_contacts: true,
+          owner_limit: Number(form.owner_limit),
         }),
       });
 
@@ -105,7 +101,7 @@ export default function DashboardPage() {
     }
   }
 
-  const selectedBoard = status?.board?.name ?? "No board selected";
+  const selectedBoard = status?.board?.name ?? "No destination board selected";
   const deliveryCount = status?.deliveries?.length ?? 0;
   const latestDelivery = status?.latest_delivery;
 
@@ -113,16 +109,17 @@ export default function DashboardPage() {
     <main className="page dashboard-page">
       <section className="panel hero hero-grid">
         <div>
-          <p className="eyebrow">lli-saas operator flow</p>
-          <h1>Monday delivery cockpit.</h1>
+          <p className="eyebrow">lli-saas orchestration flow</p>
+          <h1>Obituary intelligence cockpit.</h1>
           <p className="lede">
-            Configure the board, run the first scan, and inspect delivery outcomes from
-            the persisted adapter state instead of the Phase 1 placeholder shell.
+            Pull owner records from the Monday <strong>Clients</strong> board, run the
+            obituary intelligence scan through <code>lead-engine</code>, and inspect
+            destination-board delivery outcomes from the persisted CRM adapter state.
           </p>
         </div>
         <div className="hero-metrics">
           <div className="metric-chip">
-            <span>Board</span>
+            <span>Destination board</span>
             <strong>{selectedBoard}</strong>
           </div>
           <div className="metric-chip">
@@ -147,58 +144,46 @@ export default function DashboardPage() {
         <article className="panel status-card">
           <h2>Connection status</h2>
           <p className={`status ${status?.board ? "ready" : "offline"}`}>
-            {loading ? "Loading" : status?.board ? "Board connected" : "Board not selected"}
+            {loading ? "Loading" : status?.board ? "Destination board connected" : "Destination board not selected"}
           </p>
           <p>Tenant: {status?.tenant_id ?? "pilot"}</p>
-          <p>Selected board: {selectedBoard}</p>
+          <p>Selected destination board: {selectedBoard}</p>
           <p>Scan runs tracked: {status?.scan_runs?.length ?? 0}</p>
         </article>
 
         <article className="panel mapping-card">
-          <h2>Board mapping</h2>
+          <h2>Lead delivery mapping</h2>
           <p className="status ready">{mapping?.mapping?.item_name_strategy ?? "Not configured"}</p>
-          <p>{mapping ? formatColumnSummary(mapping.mapping) : "Select a board to persist mapping."}</p>
+          <p>{mapping ? formatColumnSummary(mapping.mapping) : "Select a destination board to persist mapping."}</p>
         </article>
 
         <article className="panel scan-card">
-          <h2>First scan launcher</h2>
-          <form className="auth-form scan-form" onSubmit={handleFirstScan}>
+          <h2>Run scan</h2>
+          <form className="auth-form scan-form" onSubmit={handleRunScan}>
             <label>
-              County
-              <input
-                type="text"
-                value={form.county}
-                onChange={(event) => setForm((current) => ({ ...current, county: event.target.value }))}
-              />
-            </label>
-            <label>
-              State
-              <input
-                type="text"
-                value={form.state}
-                onChange={(event) => setForm((current) => ({ ...current, state: event.target.value.toUpperCase() }))}
-              />
-            </label>
-            <label>
-              Lead limit
+              Owner limit
               <input
                 type="number"
                 min="1"
-                max="25"
-                value={form.limit}
-                onChange={(event) => setForm((current) => ({ ...current, limit: event.target.value }))}
+                max="10000"
+                value={form.owner_limit}
+                onChange={(event) => setForm((current) => ({ ...current, owner_limit: event.target.value }))}
               />
             </label>
             <button type="submit" disabled={runningScan}>
-              {runningScan ? "Running scan..." : "Run first scan"}
+              {runningScan ? "Running scan..." : "Run obituary scan"}
             </button>
           </form>
+          <p className="subtle">
+            Each run pulls fresh owner data from Monday instead of scanning a persisted owner corpus.
+          </p>
           {lastRunSummary ? (
             <div className="result-strip">
               <strong>{lastRunSummary.scan_id}</strong>
-              <span>{lastRunSummary.totals.created} created</span>
-              <span>{lastRunSummary.totals.skipped_duplicate} skipped</span>
-              <span>{lastRunSummary.totals.failed} failed</span>
+              <span>{lastRunSummary.owner_count} owners fetched</span>
+              <span>{lastRunSummary.lead_count} leads generated</span>
+              <span>{lastRunSummary.delivery_summary.created} delivered</span>
+              <span>{lastRunSummary.delivery_summary.failed} failed</span>
             </div>
           ) : null}
         </article>

@@ -19,8 +19,8 @@ run_step "lead-engine tests" bash -lc 'cd services/lead-engine && python3 -m poe
 run_step "crm-adapter tests" bash -lc 'cd services/crm-adapter && npm test'
 run_step "user-portal tests" bash -lc 'cd services/user-portal && npm test'
 run_step "user-portal build" bash -lc 'cd services/user-portal && npm run build'
-run_step "lead-engine docker build" docker build -t lli-saas/lead-engine:pilot-check services/lead-engine
-run_step "crm-adapter docker build" docker build -t lli-saas/crm-adapter:pilot-check services/crm-adapter
+run_step "lead-engine docker build" docker build -f services/lead-engine/Dockerfile -t lli-saas/lead-engine:pilot-check .
+run_step "crm-adapter docker build" docker build -f services/crm-adapter/Dockerfile -t lli-saas/crm-adapter:pilot-check .
 run_step "user-portal docker build" docker build -t lli-saas/user-portal:pilot-check services/user-portal
 run_step "helm lint" helm lint infra/charts/lli-saas
 run_step "helm template" bash -lc 'helm template lli-saas infra/charts/lli-saas > /tmp/lli-saas-pilot-rendered.yaml'

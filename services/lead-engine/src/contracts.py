@@ -7,17 +7,19 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-def _resolve_contract_path() -> Path:
+def _resolve_contract_path(filename: str) -> Path:
     current = Path(__file__).resolve()
     for parent in current.parents:
-        candidate = parent / "shared" / "contracts" / "internal-lead.schema.json"
+        candidate = parent / "shared" / "contracts" / filename
         if candidate.is_file():
             return candidate
 
-    return current.parent.parent / "shared" / "contracts" / "internal-lead.schema.json"
+    return current.parent.parent / "shared" / "contracts" / filename
 
 
-CONTRACT_PATH = _resolve_contract_path()
+LEAD_CONTRACT_PATH = _resolve_contract_path("lead.schema.json")
+OWNER_RECORD_CONTRACT_PATH = _resolve_contract_path("owner-record.schema.json")
+SCAN_RESULT_CONTRACT_PATH = _resolve_contract_path("scan-result.schema.json")
 
 
 class PropertyAddress(BaseModel):
@@ -40,7 +42,7 @@ class LeadContact(BaseModel):
     mailing_address: str = ""
 
 
-class InternalLead(BaseModel):
+class Lead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     scan_id: str
@@ -56,32 +58,48 @@ class InternalLead(BaseModel):
     raw_artifacts: list[str]
 
 
-class ScanRequest(BaseModel):
+class RunScanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    county: str = Field(min_length=1)
-    state: str = Field(min_length=2, max_length=2)
-    limit: int = Field(default=25, ge=1, le=500)
-    include_contacts: bool = True
+    owner_limit: int = Field(default=10000, ge=1, le=10000)
+
+
+class DeliverySummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    created: int = Field(default=0, ge=0)
+    skipped_duplicate: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
 
 
 class ScanError(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    stage: Literal["crm_fetch", "owner_normalization", "obituary_engine", "lead_delivery"]
     code: str
     message: str
     details: dict[str, Any] = Field(default_factory=dict)
 
 
-class RunScanResponse(BaseModel):
+class ScanResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     scan_id: str
-    status: Literal["completed", "failed"]
+    status: Literal["completed", "partial", "failed"]
+    owner_count: int = Field(ge=0)
     lead_count: int = Field(ge=0)
-    leads: list[InternalLead] = Field(default_factory=list)
+    delivery_summary: DeliverySummary = Field(default_factory=DeliverySummary)
+    leads: list[Lead] = Field(default_factory=list)
     errors: list[ScanError] = Field(default_factory=list)
 
 
-def load_internal_lead_schema() -> dict:
-    return json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+def load_lead_schema() -> dict[str, Any]:
+    return json.loads(LEAD_CONTRACT_PATH.read_text(encoding="utf-8"))
+
+
+def load_owner_record_schema() -> dict[str, Any]:
+    return json.loads(OWNER_RECORD_CONTRACT_PATH.read_text(encoding="utf-8"))
+
+
+def load_scan_result_schema() -> dict[str, Any]:
+    return json.loads(SCAN_RESULT_CONTRACT_PATH.read_text(encoding="utf-8"))

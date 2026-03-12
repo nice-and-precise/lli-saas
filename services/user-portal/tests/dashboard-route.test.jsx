@@ -8,7 +8,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("renders live dashboard status and runs the first scan flow", async () => {
+test("renders live dashboard status and runs the obituary scan flow", async () => {
   const fetchMock = vi
     .spyOn(globalThis, "fetch")
     .mockResolvedValueOnce({
@@ -42,7 +42,12 @@ test("renders live dashboard status and runs the first scan flow", async () => {
       ok: true,
       json: async () => ({
         scan_id: "scan-2",
-        totals: { created: 1, skipped_duplicate: 0, failed: 0 },
+        status: "completed",
+        owner_count: 150,
+        lead_count: 2,
+        delivery_summary: { created: 2, skipped_duplicate: 0, failed: 0 },
+        leads: [],
+        errors: [],
       }),
     })
     .mockResolvedValueOnce({
@@ -79,19 +84,19 @@ test("renders live dashboard status and runs the first scan flow", async () => {
     </MemoryRouter>,
   );
 
-  expect(screen.getByRole("heading", { name: /monday delivery cockpit/i })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /obituary intelligence cockpit/i })).toBeInTheDocument();
   await waitFor(() =>
     expect(screen.getAllByText(/pilot leads/i).length).toBeGreaterThan(0),
   );
   expect(screen.getByText(/deceased_name_address/i)).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: /run first scan/i }));
+  fireEvent.click(screen.getByRole("button", { name: /run obituary scan/i }));
 
   await waitFor(() =>
     expect(screen.getAllByText(/scan-2/i).length).toBeGreaterThan(0),
   );
   expect(fetchMock).toHaveBeenCalledWith(
-    "http://localhost:3000/first-scan",
+    "http://localhost:8000/run-scan",
     expect.objectContaining({
       method: "POST",
     }),

@@ -8,10 +8,11 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir poetry==2.1.1
 
-COPY pyproject.toml /app/
+COPY services/lead-engine/pyproject.toml /app/
 RUN poetry install --only main --no-root
 
-COPY src /app/src
+COPY services/lead-engine/src /app/src
+COPY shared/contracts /app/shared/contracts
 
 EXPOSE 8000
 

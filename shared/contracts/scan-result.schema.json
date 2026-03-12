@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lli-saas.local/contracts/scan-result.schema.json",
+  "title": "ScanResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scan_id",
+    "status",
+    "owner_count",
+    "lead_count",
+    "delivery_summary",
+    "leads",
+    "errors"
+  ],
+  "properties": {
+    "scan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "failed"
+      ]
+    },
+    "owner_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lead_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "delivery_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "created",
+        "skipped_duplicate",
+        "failed"
+      ],
+      "properties": {
+        "created": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped_duplicate": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "leads": {
+      "type": "array",
+      "items": {
+        "$ref": "https://lli-saas.local/contracts/lead.schema.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "code",
+          "message",
+          "details"
+        ],
+        "properties": {
+          "stage": {
+            "type": "string",
+            "enum": [
+              "crm_fetch",
+              "owner_normalization",
+              "obituary_engine",
+              "lead_delivery"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "details": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

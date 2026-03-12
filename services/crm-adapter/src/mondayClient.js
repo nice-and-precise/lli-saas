@@ -1,5 +1,10 @@
 const axios = require("axios");
-const { CREATE_ITEM_MUTATION, LIST_BOARDS_QUERY, LIST_BOARD_ITEMS_QUERY } = require("./queries");
+const {
+  CREATE_ITEM_MUTATION,
+  LIST_BOARDS_QUERY,
+  LIST_BOARD_ITEMS_PAGE_QUERY,
+  NEXT_BOARD_ITEMS_PAGE_QUERY,
+} = require("./queries");
 
 function wait(ms, sleep = setTimeout) {
   return new Promise((resolve) => sleep(resolve, ms));
@@ -108,16 +113,61 @@ class MondayClient {
     return response.data?.boards ?? [];
   }
 
-  async listBoardItems({ token, boardId }) {
+  async listBoardItemsPage({ token, boardId, limit = 500 }) {
     const response = await this.executeGraphQL({
-      query: LIST_BOARD_ITEMS_QUERY,
+      query: LIST_BOARD_ITEMS_PAGE_QUERY,
       variables: {
         boardIds: [boardId],
+        limit,
       },
       token,
     });
 
-    return response.data?.boards?.[0]?.items_page?.items ?? [];
+    const itemsPage = response.data?.boards?.[0]?.items_page ?? {};
+    return {
+      cursor: itemsPage.cursor ?? null,
+      items: itemsPage.items ?? [],
+    };
+  }
+
+  async nextBoardItemsPage({ token, cursor, limit = 500 }) {
+    const response = await this.executeGraphQL({
+      query: NEXT_BOARD_ITEMS_PAGE_QUERY,
+      variables: {
+        cursor,
+        limit,
+      },
+      token,
+    });
+
+    const itemsPage = response.data?.next_items_page ?? {};
+    return {
+      cursor: itemsPage.cursor ?? null,
+      items: itemsPage.items ?? [],
+    };
+  }
+
+  async listBoardItems({ token, boardId, limit = 10000 }) {
+    const pageSize = Math.min(Math.max(limit, 1), 500);
+    const collected = [];
+    let page = await this.listBoardItemsPage({
+      token,
+      boardId,
+      limit: pageSize,
+    });
+
+    collected.push(...page.items);
+
+    while (page.cursor && collected.length < limit) {
+      page = await this.nextBoardItemsPage({
+        token,
+        cursor: page.cursor,
+        limit: Math.min(limit - collected.length, 500),
+      });
+      collected.push(...page.items);
+    }
+
+    return collected.slice(0, limit);
   }
 
   async createItem({ token, boardId, itemName, columnValues = {} }) {

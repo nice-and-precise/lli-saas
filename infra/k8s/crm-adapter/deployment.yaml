@@ -20,8 +20,6 @@ spec:
           env:
             - name: PORT
               value: "3000"
-            - name: LEAD_ENGINE_BASE_URL
-              value: "http://lead-engine:8000"
             - name: MONDAY_CLIENT_ID
               value: "change-me"
             - name: MONDAY_CLIENT_SECRET

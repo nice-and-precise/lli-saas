@@ -1,11 +1,17 @@
 const express = require("express");
 const {
-  getInternalLeadSchemaPath,
-  mapInternalLeadToMondayItemWithMapping,
+  getLeadSchemaPath,
+  mapLeadToMondayItemWithMapping,
   validateBoardMapping,
-} = require("./internalLead");
+} = require("./leadContract");
 const { MondayClient } = require("./mondayClient");
+const {
+  getOwnerRecordSchemaPath,
+  normalizeMondayOwnerRecords,
+} = require("./ownerRecord");
 const { createDefaultMapping, DEFAULT_TENANT_ID, FileTokenStore } = require("./tokenStore");
+
+const SOURCE_OWNER_BOARD_NAME = "Clients";
 
 function normalizeDuplicateValue(value) {
   return String(value ?? "")
@@ -97,24 +103,16 @@ function createStatusSnapshot(state, tenantId) {
   };
 }
 
-function createRuntimeVisibility({
-  leadEngineBaseUrl,
-  tokenStore,
-  mondayConfig,
-}) {
+function createRuntimeVisibility({ tokenStore, mondayConfig }) {
   return {
-    lead_engine_base_url: leadEngineBaseUrl,
     monday_oauth_configured: Object.values(mondayConfig).every(Boolean),
+    source_owner_board_name: SOURCE_OWNER_BOARD_NAME,
     token_store_path: tokenStore.filePath ?? "memory",
   };
 }
 
-function getReadinessIssues({ leadEngineBaseUrl, mondayConfig }) {
+function getReadinessIssues({ mondayConfig }) {
   const issues = [];
-
-  if (!leadEngineBaseUrl) {
-    issues.push("LEAD_ENGINE_BASE_URL");
-  }
 
   Object.entries(mondayConfig).forEach(([key, value]) => {
     if (!value) {
@@ -181,11 +179,29 @@ function getTenantId(req) {
   return DEFAULT_TENANT_ID;
 }
 
+function parseLimit(value, defaultValue = 10000) {
+  if (value == null || value === "") {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10000) {
+    throw new Error("limit must be an integer between 1 and 10000");
+  }
+
+  return parsed;
+}
+
+function buildMondayRequestErrorResponse(error, fallbackMessage) {
+  return {
+    error: fallbackMessage,
+    details: error.message,
+  };
+}
+
 function createApp(options = {}) {
   const app = express();
   const tokenStore = options.tokenStore ?? new FileTokenStore();
-  const fetchImpl = options.fetchImpl ?? fetch;
-  const leadEngineBaseUrl = options.leadEngineBaseUrl ?? process.env.LEAD_ENGINE_BASE_URL ?? "http://localhost:8000";
   const mondayConfig = {
     MONDAY_CLIENT_ID: options.clientId ?? process.env.MONDAY_CLIENT_ID ?? "",
     MONDAY_CLIENT_SECRET: options.clientSecret ?? process.env.MONDAY_CLIENT_SECRET ?? "",
@@ -223,7 +239,7 @@ function createApp(options = {}) {
     let mappedLead;
 
     try {
-      mappedLead = mapInternalLeadToMondayItemWithMapping(leadPayload, state.board_mapping);
+      mappedLead = mapLeadToMondayItemWithMapping(leadPayload, state.board_mapping);
     } catch (error) {
       return {
         statusCode: 400,
@@ -232,10 +248,19 @@ function createApp(options = {}) {
     }
 
     const duplicateKey = buildDuplicateKey(mappedLead.itemName);
-    const existingItems = await mondayClient.listBoardItems({
-      token,
-      boardId: state.board.id,
-    });
+    let existingItems;
+    try {
+      existingItems = await mondayClient.listBoardItems({
+        token,
+        boardId: state.board.id,
+        limit: 10000,
+      });
+    } catch (error) {
+      return {
+        statusCode: 502,
+        body: buildMondayRequestErrorResponse(error, "Failed to query Monday destination board"),
+      };
+    }
     const duplicateMatch = existingItems.find((item) => buildDuplicateKey(item.name) === duplicateKey);
 
     if (duplicateMatch) {
@@ -330,7 +355,6 @@ function createApp(options = {}) {
       status: "ok",
       service: "crm-adapter",
       ...createRuntimeVisibility({
-        leadEngineBaseUrl,
         tokenStore,
         mondayConfig,
       }),
@@ -339,7 +363,6 @@ function createApp(options = {}) {
 
   app.get("/ready", (_req, res) => {
     const missingConfiguration = getReadinessIssues({
-      leadEngineBaseUrl,
       mondayConfig,
     });
 
@@ -358,7 +381,10 @@ function createApp(options = {}) {
   });
 
   app.get("/contract", (_req, res) => {
-    res.json({ contract_path: getInternalLeadSchemaPath() });
+    res.json({
+      lead_contract_path: getLeadSchemaPath(),
+      owner_record_contract_path: getOwnerRecordSchemaPath(),
+    });
   });
 
   app.get("/auth/login", (req, res) => {
@@ -391,8 +417,8 @@ function createApp(options = {}) {
     });
   });
 
-  app.get("/boards", async (_req, res) => {
-    const tenantId = getTenantId(_req);
+  app.get("/boards", async (req, res) => {
+    const tenantId = getTenantId(req);
     const state = await getPersistedState(tokenStore, tenantId);
     const token = state.tokens?.monday_access_token ?? null;
 
@@ -400,12 +426,80 @@ function createApp(options = {}) {
       return res.status(409).json({ error: "Monday OAuth token not configured" });
     }
 
-    const boards = await mondayClient.listBoards(token);
+    let boards;
+    try {
+      boards = await mondayClient.listBoards(token);
+    } catch (error) {
+      return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to query Monday boards"));
+    }
 
     return res.json({
       boards,
       selected_board: state.board ?? null,
       tenant_id: tenantId,
+    });
+  });
+
+  app.get("/owners", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const state = await getPersistedState(tokenStore, tenantId);
+    const token = state.tokens?.monday_access_token ?? null;
+
+    if (!token) {
+      return res.status(409).json({ error: "Monday OAuth token not configured" });
+    }
+
+    let limit;
+    try {
+      limit = parseLimit(req.query.limit);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    let boards;
+    try {
+      boards = await mondayClient.listBoards(token);
+    } catch (error) {
+      return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to query Monday boards"));
+    }
+    const sourceBoard = boards.find((board) => String(board.name).trim() === SOURCE_OWNER_BOARD_NAME);
+
+    if (!sourceBoard) {
+      return res.status(404).json({ error: `${SOURCE_OWNER_BOARD_NAME} board not found` });
+    }
+
+    let items;
+    try {
+      items = await mondayClient.listBoardItems({
+        token,
+        boardId: String(sourceBoard.id),
+        limit,
+      });
+    } catch (error) {
+      return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to fetch Monday owner records"));
+    }
+
+    let owners;
+    try {
+      owners = normalizeMondayOwnerRecords({
+        boardId: String(sourceBoard.id),
+        items,
+      });
+    } catch (error) {
+      return res.status(502).json({
+        error: "Failed to normalize Monday owner records",
+        details: error.message,
+      });
+    }
+
+    return res.json({
+      tenant_id: tenantId,
+      source_board: {
+        id: String(sourceBoard.id),
+        name: sourceBoard.name,
+      },
+      owner_count: owners.length,
+      owners,
     });
   });
 
@@ -424,7 +518,12 @@ function createApp(options = {}) {
       return res.status(409).json({ error: "Monday OAuth token not configured" });
     }
 
-    const boards = await mondayClient.listBoards(token);
+    let boards;
+    try {
+      boards = await mondayClient.listBoards(token);
+    } catch (error) {
+      return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to query Monday boards"));
+    }
     const selectedBoard = boards.find((board) => String(board.id) === boardId);
 
     if (!selectedBoard) {
@@ -504,57 +603,6 @@ function createApp(options = {}) {
     return res.json(createStatusSnapshot(state, tenantId));
   });
 
-  app.post("/first-scan", async (req, res) => {
-    const tenantId = getTenantId(req);
-    const scanResponse = await fetchImpl(`${leadEngineBaseUrl}/run-scan`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(req.body ?? {}),
-    });
-    const scanPayload = await scanResponse.json();
-
-    if (!scanResponse.ok || scanPayload.status === "failed") {
-      return res.status(502).json({
-        error: "Lead engine scan failed",
-        tenant_id: tenantId,
-        scan: scanPayload,
-      });
-    }
-
-    const deliveries = [];
-    for (const lead of scanPayload.leads ?? []) {
-      const deliveryResult = await deliverLead(tenantId, lead);
-      deliveries.push(deliveryResult.body);
-    }
-
-    const state = await getPersistedState(tokenStore, tenantId);
-    const totals = deliveries.reduce(
-      (summary, delivery) => {
-        if (delivery.status === "created") {
-          summary.created += 1;
-        } else if (delivery.status === "skipped_duplicate") {
-          summary.skipped_duplicate += 1;
-        } else if (delivery.status === "failed") {
-          summary.failed += 1;
-        }
-        return summary;
-      },
-      { created: 0, skipped_duplicate: 0, failed: 0 },
-    );
-
-    return res.status(200).json({
-      tenant_id: tenantId,
-      scan_id: scanPayload.scan_id ?? null,
-      scan_status: scanPayload.status ?? "completed",
-      lead_count: scanPayload.lead_count ?? deliveries.length,
-      totals,
-      deliveries,
-      status: createStatusSnapshot(state, tenantId),
-    });
-  });
-
   app.post("/leads", async (req, res) => {
     const tenantId = getTenantId(req);
     const deliveryResult = await deliverLead(tenantId, req.body);
@@ -565,6 +613,7 @@ function createApp(options = {}) {
 }
 
 module.exports = {
+  SOURCE_OWNER_BOARD_NAME,
   createApp,
   getPersistedState,
 };

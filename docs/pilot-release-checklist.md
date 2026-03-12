@@ -31,10 +31,11 @@ After the automated gate passes:
 2. Confirm `lead-engine` and `crm-adapter` return `ready` from `/ready`.
 3. Open the portal dashboard and confirm status loads.
 4. Complete Monday OAuth if the current pilot session needs a fresh connection.
-5. Confirm the selected board and mapping are correct.
-6. Run the first scan from the dashboard.
-7. Verify the dashboard shows recent delivery history and scan run status.
-8. Verify the created item appears in the expected Monday board with the expected mapped values.
+5. Confirm the destination board and mapping are correct.
+6. Confirm owner fetch succeeds from the Monday `Clients` board.
+7. Run the obituary scan from the dashboard.
+8. Verify the dashboard shows recent delivery history and scan-run status.
+9. Verify the created item appears in the expected Monday destination board with the expected mapped values.
 
 ## Stop Conditions
 
@@ -43,8 +44,8 @@ Do not proceed with a live pilot if any of the following occur:
 - `scripts/pilot-readiness-check.sh` fails
 - `/ready` fails for `lead-engine` or `crm-adapter`
 - the portal cannot load status from `crm-adapter`
-- Monday OAuth, board selection, or mapping are not confirmed
-- first-scan delivery produces unexpected failed outcomes
+- Monday OAuth, source-owner access, destination-board selection, or mapping are not confirmed
+- obituary scan delivery produces unexpected failed outcomes
 
 ## Evidence to Save
 

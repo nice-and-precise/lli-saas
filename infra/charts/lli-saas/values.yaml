@@ -14,7 +14,8 @@ services:
       enabled: true
       path: /ready
     env:
-      REAPER_BASE_URL: http://reaper:8080
+      CRM_ADAPTER_BASE_URL: http://crm-adapter:3000
+      OBITUARY_ENGINE_BASE_URL: http://reaper:8080
   crmAdapter:
     name: crm-adapter
     image:
@@ -30,7 +31,6 @@ services:
       enabled: true
       path: /ready
     env:
-      LEAD_ENGINE_BASE_URL: http://lead-engine:8000
       MONDAY_CLIENT_ID: change-me
       MONDAY_CLIENT_SECRET: change-me
       MONDAY_REDIRECT_URI: http://crm-adapter:3000/auth/callback

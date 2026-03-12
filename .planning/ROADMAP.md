@@ -67,7 +67,7 @@ Plans:
 
 Plans:
 - [x] 04-01: Harden pilot onboarding, runbook flow, and configuration guidance.
-- [ ] 04-02: Improve runtime visibility and reconcile infra defaults with the live pilot flow.
+- [x] 04-02: Improve runtime visibility and reconcile infra defaults with the live pilot flow.
 - [ ] 04-03: Add a repeatable pilot release gate and final rehearsal checklist.
 
 ## Progress
@@ -77,4 +77,4 @@ Plans:
 | 1. Foundation Scaffold | 3/3 | Complete | 2026-03-11 |
 | 2. Reaper Integration | 3/3 | Complete | 2026-03-11 |
 | 3. Monday Delivery Flow | 3/3 | Complete | 2026-03-11 |
-| 4. Pilot Operations | 1/3 | In progress | - |
+| 4. Pilot Operations | 2/3 | In progress | - |

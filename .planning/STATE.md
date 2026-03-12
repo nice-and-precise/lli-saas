@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-03-11)
 ## Current Position
 
 Phase: 4 of 4 (Pilot Operations)
-Plan: 1 complete, 2 planned
-Status: Executing Wave 2
-Last activity: 2026-03-11 — Completed Phase 4 Plan 04-01 for pilot onboarding and configuration guidance
+Plan: 2 complete, 1 planned
+Status: Executing final plan
+Last activity: 2026-03-11 — Completed Phase 4 Plan 04-02 for runtime visibility and infra hardening
 
 Progress: [████████░░] 75%
 
@@ -57,6 +57,7 @@ Recent decisions affecting current work:
 - Phase 3: Keep the portal thin by routing first-scan orchestration and status reads through crm-adapter instead of calling lead-engine directly from the browser.
 - Phase 4: Focus on pilot hardening of the existing workflow rather than adding broader new product scope.
 - Phase 4: Standardize pilot setup around the portal-first operator flow and explicit service-to-service URL configuration.
+- Phase 4: Treat readiness probes as configuration-aware pilot gates for lead-engine and crm-adapter rather than simple process liveness checks.
 
 ### Pending Todos
 
@@ -69,6 +70,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11 19:00
-Stopped at: Phase 4 Wave 2 after completing 04-01
+Last session: 2026-03-11 19:19
+Stopped at: Phase 4 final plan after completing 04-02
 Resume file: None

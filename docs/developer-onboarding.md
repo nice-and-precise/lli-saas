@@ -18,10 +18,11 @@
    - `http://localhost:8000/health`
    - `http://localhost:3000/health`
    - `http://localhost:5173/login`
+8. Before a real pilot session, run `bash scripts/pilot-readiness-check.sh`.
 
 ## Notes
 
 - GSD Codex skills are installed globally under `~/.codex/skills/gsd-*`.
 - Phase planning state lives in `.planning/`.
 - GHCR image names are defined in the GitHub Actions workflows and `infra/charts/lli-saas/values.yaml`.
-
+- Use [docs/pilot-release-checklist.md](/Users/jordan/Desktop/LLI_v1/docs/pilot-release-checklist.md) as the final rehearsal path before a live pilot run.

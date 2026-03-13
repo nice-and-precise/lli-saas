@@ -15,14 +15,21 @@ const OWNER_FIELD_ALIASES = {
   mailing_state: ["mailing_state", "mail_state"],
   mailing_city: ["mailing_city", "mail_city", "city"],
   mailing_postal_code: ["mailing_postal_code", "mail_postal_code", "mail_zip", "zip"],
-  property_address_line_1: ["property_address_line_1", "property_address", "address", "address_line_1"],
+  property_address_line_1: [
+    "property_address_line_1",
+    "property_address",
+    "address",
+    "address_line_1",
+  ],
   property_city: ["property_city", "property_town", "farm_city"],
   property_postal_code: ["property_postal_code", "property_zip", "property_zip_code"],
   operator_name: ["operator_name", "tenant_name", "who_farms_it", "farmer", "operator"],
 };
 
 function getOwnerRecordSchemaPath() {
-  const existingPath = OWNER_RECORD_SCHEMA_PATH_CANDIDATES.find((candidate) => fs.existsSync(candidate));
+  const existingPath = OWNER_RECORD_SCHEMA_PATH_CANDIDATES.find((candidate) =>
+    fs.existsSync(candidate),
+  );
   return existingPath ?? OWNER_RECORD_SCHEMA_PATH_CANDIDATES[0];
 }
 

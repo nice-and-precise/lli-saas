@@ -1,9 +1,6 @@
 const fs = require("fs");
 
-const {
-  getOwnerRecordSchemaPath,
-  normalizeMondayOwnerRecords,
-} = require("../src/ownerRecord");
+const { getOwnerRecordSchemaPath, normalizeMondayOwnerRecords } = require("../src/ownerRecord");
 
 describe("owner record helpers", () => {
   it("points to the shared owner schema artifact", () => {
@@ -27,7 +24,11 @@ describe("owner record helpers", () => {
             { id: "mail_state", text: "IA", column: { title: "Mail State" } },
             { id: "mail_city", text: "Boone", column: { title: "Mail City" } },
             { id: "mail_zip", text: "50036", column: { title: "Mail Zip" } },
-            { id: "property_address", text: "123 County Road", column: { title: "Property Address" } },
+            {
+              id: "property_address",
+              text: "123 County Road",
+              column: { title: "Property Address" },
+            },
             { id: "property_city", text: "Boone", column: { title: "Property City" } },
             { id: "property_zip", text: "50036", column: { title: "Property Zip" } },
             { id: "tenant_name", text: "Johnson Farms LLC", column: { title: "Tenant Name" } },

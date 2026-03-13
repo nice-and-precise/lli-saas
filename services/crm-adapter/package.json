@@ -5,6 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
+    "lint": "eslint src tests vitest.config.js eslint.config.cjs --max-warnings=0",
+    "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\" \"package.json\" \"vitest.config.js\" \"eslint.config.cjs\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"tests/**/*.js\" \"package.json\" \"vitest.config.js\" \"eslint.config.cjs\"",
     "test": "vitest run"
   },
   "dependencies": {
@@ -12,8 +15,11 @@
     "express": "^4.21.2"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "globals": "^17.4.0",
+    "prettier": "^3.8.1",
     "supertest": "^7.1.0",
     "vitest": "^3.0.8"
   }
 }
-

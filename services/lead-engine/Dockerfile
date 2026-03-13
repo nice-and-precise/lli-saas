@@ -6,9 +6,9 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir poetry==2.1.1
+RUN pip install --no-cache-dir poetry==2.3.2
 
-COPY services/lead-engine/pyproject.toml /app/
+COPY services/lead-engine/pyproject.toml services/lead-engine/poetry.lock /app/
 RUN poetry install --only main --no-root
 
 COPY services/lead-engine/src /app/src

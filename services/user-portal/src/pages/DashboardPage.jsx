@@ -1,6 +1,8 @@
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { getRequiredServiceBaseUrl } from "../runtimeConfig";
+import { clearAccessToken, getAccessToken } from "../session";
 
 const INITIAL_FORM = {
   owner_limit: 1000,
@@ -20,6 +22,7 @@ const MAPPING_FIELDS = [
   "death_date",
   "obituary_source",
   "obituary_url",
+  "idempotency_key",
   "match_score",
   "match_status",
   "tier",
@@ -35,9 +38,11 @@ const MAPPING_FIELDS = [
 ];
 
 async function fetchJson(baseUrl, path, options = {}) {
+  const accessToken = getAccessToken();
   const response = await fetch(`${baseUrl}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
       ...(options.headers ?? {}),
     },
     ...options,
@@ -75,7 +80,25 @@ function buildInitialMappingDraft(mapping) {
   };
 }
 
+function summarizeSourceReports(sourceReports) {
+  if (!Array.isArray(sourceReports) || sourceReports.length === 0) {
+    return "Sources: no source reports";
+  }
+
+  const counts = sourceReports.reduce((summary, report) => {
+    const status = report?.status ?? "unknown";
+    summary[status] = (summary[status] ?? 0) + 1;
+    return summary;
+  }, {});
+
+  return Object.entries(counts)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([status, count]) => `${count} ${status}`)
+    .join(", ");
+}
+
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState(null);
   const [mapping, setMapping] = useState(null);
   const [mappingDraft, setMappingDraft] = useState(buildInitialMappingDraft(null));
@@ -88,18 +111,30 @@ export default function DashboardPage() {
   const [savingMapping, setSavingMapping] = useState(false);
   const [error, setError] = useState("");
   const [lastRunSummary, setLastRunSummary] = useState(null);
+  const [operator, setOperator] = useState(null);
 
-  async function refreshDashboard() {
+  const refreshDashboard = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
       const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
-      const [statusPayload, mappingResult, boardsResult] = await Promise.allSettled([
-        fetchJson(crmAdapterBaseUrl, "/status"),
-        fetchJson(crmAdapterBaseUrl, "/mapping"),
-        fetchJson(crmAdapterBaseUrl, "/boards"),
-      ]);
+      const [sessionPayload, statusPayload, mappingResult, boardsResult] = await Promise.allSettled(
+        [
+          fetchJson(crmAdapterBaseUrl, "/session/me"),
+          fetchJson(crmAdapterBaseUrl, "/status"),
+          fetchJson(crmAdapterBaseUrl, "/mapping"),
+          fetchJson(crmAdapterBaseUrl, "/boards"),
+        ],
+      );
+
+      if (sessionPayload.status !== "fulfilled") {
+        throw sessionPayload.reason;
+      }
+
+      startTransition(() => {
+        setOperator(sessionPayload.value);
+      });
 
       if (statusPayload.status !== "fulfilled") {
         throw statusPayload.reason;
@@ -133,15 +168,20 @@ export default function DashboardPage() {
         });
       }
     } catch (requestError) {
+      if (/bearer token/i.test(requestError.message)) {
+        clearAccessToken();
+        navigate("/login", { replace: true });
+        return;
+      }
       setError(requestError.message);
     } finally {
       setLoading(false);
     }
-  }
+  }, [navigate]);
 
   useEffect(() => {
-    refreshDashboard();
-  }, []);
+    void refreshDashboard();
+  }, [refreshDashboard]);
 
   async function handleRunScan(event) {
     event.preventDefault();
@@ -225,6 +265,23 @@ export default function DashboardPage() {
   const deliveryCount = status?.deliveries?.length ?? 0;
   const latestDelivery = status?.latest_delivery;
   const latestLeadSummary = latestDelivery?.summary ?? null;
+  const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
+
+  async function handleConnectMonday() {
+    setError("");
+
+    try {
+      const payload = await fetchJson(crmAdapterBaseUrl, "/auth/login-url");
+      window.location.assign(payload.authorization_url);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
+  function handleLogout() {
+    clearAccessToken();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <main className="page dashboard-page">
@@ -233,9 +290,9 @@ export default function DashboardPage() {
           <p className="eyebrow">lli-saas orchestration flow</p>
           <h1>Obituary intelligence cockpit.</h1>
           <p className="lede">
-            Pull owner records from the Monday <strong>Clients</strong> board, run the
-            obituary intelligence scan through <code>lead-engine</code>, and manage the
-            richer delivery mapping for obituary, heir, and match signals.
+            Pull owner records from the Monday <strong>Clients</strong> board, run the obituary
+            intelligence scan through <code>lead-engine</code>, and manage the richer delivery
+            mapping for obituary, heir, and match signals.
           </p>
         </div>
         <div className="hero-metrics">
@@ -265,17 +322,36 @@ export default function DashboardPage() {
         <article className="panel status-card">
           <h2>Connection status</h2>
           <p className={`status ${status?.board ? "ready" : "offline"}`}>
-            {loading ? "Loading" : status?.board ? "Destination board connected" : "Destination board not selected"}
+            {loading
+              ? "Loading"
+              : status?.board
+                ? "Destination board connected"
+                : "Destination board not selected"}
           </p>
           <p>Tenant: {status?.tenant_id ?? "pilot"}</p>
+          <p>Signed in as: {operator?.sub ?? "unknown"}</p>
           <p>Selected destination board: {selectedBoard}</p>
           <p>Scan runs tracked: {status?.scan_runs?.length ?? 0}</p>
+          <p className="subtle">
+            Monday OAuth is required before boards can be discovered or scans can fetch owner
+            records.
+          </p>
+          <button type="button" className="button-link" onClick={handleConnectMonday}>
+            Connect Monday
+          </button>
+          <button type="button" onClick={handleLogout}>
+            Sign out
+          </button>
         </article>
 
         <article className="panel mapping-card">
           <h2>Lead delivery mapping</h2>
           <p className="status ready">{mapping?.mapping?.item_name_strategy ?? "Not configured"}</p>
-          <p>{mapping ? formatColumnSummary(mapping.mapping) : "Select a destination board to persist mapping."}</p>
+          <p>
+            {mapping
+              ? formatColumnSummary(mapping.mapping)
+              : "Select a destination board to persist mapping."}
+          </p>
         </article>
 
         <article className="panel scan-card">
@@ -288,7 +364,9 @@ export default function DashboardPage() {
                 min="1"
                 max="10000"
                 value={form.owner_limit}
-                onChange={(event) => setForm((current) => ({ ...current, owner_limit: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, owner_limit: event.target.value }))
+                }
               />
             </label>
             <label>
@@ -298,7 +376,9 @@ export default function DashboardPage() {
                 min="1"
                 max="30"
                 value={form.lookback_days}
-                onChange={(event) => setForm((current) => ({ ...current, lookback_days: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, lookback_days: event.target.value }))
+                }
               />
             </label>
             <label>
@@ -306,7 +386,9 @@ export default function DashboardPage() {
               <input
                 type="date"
                 value={form.reference_date}
-                onChange={(event) => setForm((current) => ({ ...current, reference_date: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, reference_date: event.target.value }))
+                }
               />
             </label>
             <label>
@@ -315,7 +397,9 @@ export default function DashboardPage() {
                 type="text"
                 placeholder="kwbg_boone, the_gazette"
                 value={form.source_ids}
-                onChange={(event) => setForm((current) => ({ ...current, source_ids: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, source_ids: event.target.value }))
+                }
               />
             </label>
             <button type="submit" disabled={runningScan}>
@@ -323,7 +407,8 @@ export default function DashboardPage() {
             </button>
           </form>
           <p className="subtle">
-            Each run pulls fresh owner data from Monday instead of scanning a persisted owner corpus.
+            Each run pulls fresh owner data from Monday instead of scanning a persisted owner
+            corpus.
           </p>
           {lastRunSummary ? (
             <div className="result-strip">
@@ -332,6 +417,7 @@ export default function DashboardPage() {
               <span>{lastRunSummary.lead_count} leads generated</span>
               <span>{lastRunSummary.delivery_summary.created} delivered</span>
               <span>{lastRunSummary.delivery_summary.failed} failed</span>
+              <span>{summarizeSourceReports(lastRunSummary.source_reports)}</span>
             </div>
           ) : null}
         </article>
@@ -369,7 +455,10 @@ export default function DashboardPage() {
               <select
                 value={mappingDraft.item_name_strategy}
                 onChange={(event) =>
-                  setMappingDraft((current) => ({ ...current, item_name_strategy: event.target.value }))
+                  setMappingDraft((current) => ({
+                    ...current,
+                    item_name_strategy: event.target.value,
+                  }))
                 }
               >
                 <option value="deceased_name_county">deceased_name_county</option>

@@ -1,13 +1,28 @@
 import os
 
 import httpx
-from fastapi import Depends, FastAPI, Header
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from src.contracts import LEAD_CONTRACT_PATH, OWNER_RECORD_CONTRACT_PATH, RunScanRequest, SCAN_RESULT_CONTRACT_PATH, ScanResult
+from src.auth import AuthContext, get_auth_context, parse_allowed_origins
+from src.contracts import (
+    LEAD_CONTRACT_PATH,
+    OWNER_RECORD_CONTRACT_PATH,
+    SCAN_RESULT_CONTRACT_PATH,
+    RunScanRequest,
+    ScanResult,
+)
 from src.scan_service import ScanExecutionError, ScanService, get_scan_service
 
 app = FastAPI(title="lead-engine", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=parse_allowed_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
 def _obituary_engine_base_url() -> str:
@@ -111,9 +126,9 @@ def contract() -> dict[str, str]:
 def run_scan(
     request: RunScanRequest,
     service: ScanService = Depends(get_scan_service),
-    tenant_id: str = Header(default="pilot", alias="x-tenant-id"),
+    auth: AuthContext = Depends(get_auth_context),
 ) -> ScanResult | JSONResponse:
     try:
-        return service.run_scan(request, tenant_id)
+        return service.run_scan(request, auth)
     except ScanExecutionError as exc:
         return JSONResponse(status_code=exc.status_code, content=exc.response.model_dump(mode="json"))

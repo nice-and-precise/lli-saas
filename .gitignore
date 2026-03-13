@@ -5,6 +5,7 @@
 __pycache__/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 node_modules/
@@ -13,4 +14,7 @@ build/
 coverage/
 *.log
 poetry.toml
-
+.playwright-cli/
+artifacts/
+.artifacts/
+infra/charts/lli-saas/values.pilot.yaml

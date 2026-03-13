@@ -4,11 +4,11 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.normalization import normalize_state, normalize_whitespace
-
 
 HEIR_EXTRACTION_PROMPT = """
 You are a professional genealogist analyzing an obituary to extract family survivor information.
@@ -67,7 +67,7 @@ class HeirExtractor:
         self.provider_chain = [
             ProviderConfig(
                 provider=os.getenv("HEIR_EXTRACTION_PRIMARY_PROVIDER", "gemini"),
-                model=os.getenv("HEIR_EXTRACTION_PRIMARY_MODEL", "gemini-2.5-flash"),
+                model=os.getenv("HEIR_EXTRACTION_PRIMARY_MODEL", "gemini-2.5-flash-lite"),
                 api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
                 temperature=0.1,
             ),
@@ -126,8 +126,8 @@ class HeirExtractor:
             from google import genai
             from google.genai import types as genai_types
 
-            client = genai.Client(api_key=config.api_key)
-            response = client.models.generate_content(
+            gemini_client = genai.Client(api_key=config.api_key)
+            response = gemini_client.models.generate_content(
                 model=config.model,
                 contents=[{"text": prompt}],
                 config=genai_types.GenerateContentConfig(temperature=config.temperature),
@@ -138,8 +138,8 @@ class HeirExtractor:
         if config.provider == "anthropic":
             import anthropic
 
-            client = anthropic.Anthropic(api_key=config.api_key)
-            response = client.messages.create(
+            anthropic_client: Any = anthropic.Anthropic(api_key=config.api_key)
+            response = anthropic_client.messages.create(
                 model=config.model,
                 max_tokens=1500,
                 temperature=config.temperature,
@@ -155,12 +155,15 @@ class HeirExtractor:
 
         raise ValueError(f"Unsupported provider: {config.provider}")
 
-    def _parse_json_response(self, text: str) -> dict:
+    def _parse_json_response(self, text: str) -> dict[str, object]:
         stripped = text.strip()
         if stripped.startswith("```"):
             stripped = stripped.split("```", maxsplit=2)[1]
             stripped = stripped.removeprefix("json").strip()
-        return json.loads(stripped)
+        payload = json.loads(stripped)
+        if not isinstance(payload, dict):
+            raise ValueError("LLM response must be a JSON object")
+        return cast(dict[str, object], payload)
 
     def _heuristic_extract(self, raw_text: str, deceased_name_hint: str) -> HeirExtractionResult | None:
         lowered = raw_text.lower()
@@ -179,45 +182,8 @@ class HeirExtractor:
                 unexpected_death=any(word in lowered for word in ("suddenly", "unexpectedly", "tragically")),
             )
 
-        section = raw_text[anchor:]
-        stop_match = re.search(r"(preceded in death|visitation|funeral services|memorial services)", section, re.IGNORECASE)
-        if stop_match:
-            section = section[: stop_match.start()]
-        section = normalize_whitespace(section[:600])
-        fragments = re.split(r";|\.\s+|\band\b", section)
-        survivors = []
-
-        relationship_patterns = [
-            ("spouse", r"(?:wife|husband|spouse|companion)\s+([A-Z][A-Za-z .'-]+?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
-            ("son", r"(?:son|stepson)\s+([A-Z][A-Za-z .'-]+?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
-            ("daughter", r"(?:daughter|stepdaughter)\s+([A-Z][A-Za-z .'-]+?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
-            ("brother", r"brother\s+([A-Z][A-Za-z .'-]+?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
-            ("sister", r"sister\s+([A-Z][A-Za-z .'-]+?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
-            ("other", r"([A-Z][A-Za-z .'-]+?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
-        ]
-
-        for fragment in fragments:
-            cleaned = normalize_whitespace(fragment.strip(" ,"))
-            if len(cleaned) < 4:
-                continue
-            for relationship, pattern in relationship_patterns:
-                match = re.search(pattern, cleaned, re.IGNORECASE)
-                if not match:
-                    continue
-                name = normalize_whitespace(match.group(1))
-                if "funeral home" in name.lower():
-                    continue
-                city = normalize_whitespace(match.group(2)) if match.lastindex and match.lastindex >= 2 and match.group(2) else None
-                state = normalize_state(match.group(3)) if match.lastindex and match.lastindex >= 3 else None
-                survivors.append(
-                    ExtractedSurvivor(
-                        full_name=name,
-                        relationship=relationship,
-                        location_city=city,
-                        location_state=state,
-                    )
-                )
-                break
+        section = self._extract_survivor_section(raw_text[anchor:])
+        survivors = self._extract_survivors_from_section(section)
 
         return HeirExtractionResult(
             deceased_name=deceased_name_hint,
@@ -225,3 +191,138 @@ class HeirExtractor:
             executor_mentioned="executor" in lowered or "estate handled by" in lowered,
             unexpected_death=any(word in lowered for word in ("suddenly", "unexpectedly", "tragically")),
         )
+
+    def _extract_survivor_section(self, section: str) -> str:
+        stop_match = re.search(
+            r"(preceded in death|visitation|funeral services|memorial services|a celebration of life|services will be held|the family will greet friends|donations may be made|memorials may be directed)",
+            section,
+            re.IGNORECASE,
+        )
+        if stop_match:
+            section = section[: stop_match.start()]
+        section = normalize_whitespace(section[:500])
+        section = re.sub(
+            r"\b(?:he|she)\s+was\s+known\s+for\b.*$",
+            "",
+            section,
+            flags=re.IGNORECASE,
+        )
+        return normalize_whitespace(section)
+
+    def _extract_survivors_from_section(self, section: str) -> list[ExtractedSurvivor]:
+        fragments = re.split(r";|\.\s+", section)
+        survivors: list[ExtractedSurvivor] = []
+        seen: set[tuple[str, str, str | None, str | None]] = set()
+
+        relationship_patterns = [
+            ("spouse", r"\b(?:wife|husband|spouse|companion)\s+([A-Z][A-Za-z .'-]{1,60}?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+?)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
+            ("son", r"\b(?:son|stepson)\s+([A-Z][A-Za-z .'-]{1,60}?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+?)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
+            ("daughter", r"\b(?:daughter|stepdaughter)\s+([A-Z][A-Za-z .'-]{1,60}?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+?)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
+            ("brother", r"\bbrother\s+([A-Z][A-Za-z .'-]{1,60}?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+?)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
+            ("sister", r"\bsister\s+([A-Z][A-Za-z .'-]{1,60}?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+?)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
+            ("grandchild", r"\b(?:grandson|granddaughter|grandchild|great-grandchild|great-grandchildren)\s+([A-Z][A-Za-z .'-]{1,60}?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+?)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
+            ("niece", r"\bniece\s+([A-Z][A-Za-z .'-]{1,60}?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+?)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
+            ("nephew", r"\bnephew\s+([A-Z][A-Za-z .'-]{1,60}?)(?:\s+(?:of|in)\s+([A-Z][A-Za-z .'-]+?)(?:,\s*([A-Z]{2}|[A-Za-z ]+))?)?$"),
+        ]
+
+        for fragment in fragments:
+            cleaned = normalize_whitespace(fragment.strip(" ,.;"))
+            if len(cleaned) < 4:
+                continue
+            subfragments = re.split(r"\s+\band\b\s+", cleaned, flags=re.IGNORECASE)
+            for subfragment in subfragments:
+                candidate = normalize_whitespace(subfragment.strip(" ,.;"))
+                candidate = re.sub(
+                    r"^(?:and\s+)?(?:his|her|their)\s+",
+                    "",
+                    candidate,
+                    flags=re.IGNORECASE,
+                )
+                candidate = re.sub(
+                    r"^(?:and\s+)?(?:two|three|four|five|six|seven|eight|nine|ten)\s+",
+                    "",
+                    candidate,
+                    flags=re.IGNORECASE,
+                )
+                if not self._looks_like_survivor_fragment(candidate):
+                    continue
+                for relationship, pattern in relationship_patterns:
+                    match = re.search(pattern, candidate, re.IGNORECASE)
+                    if not match:
+                        continue
+                    survivor = self._build_survivor(relationship, match)
+                    if survivor is None:
+                        break
+                    key = (
+                        survivor.full_name.lower(),
+                        survivor.relationship,
+                        survivor.location_city,
+                        survivor.location_state,
+                    )
+                    if key not in seen:
+                        survivors.append(survivor)
+                        seen.add(key)
+                    break
+        return survivors
+
+    def _build_survivor(self, relationship: str, match: re.Match[str]) -> ExtractedSurvivor | None:
+        name = normalize_whitespace(match.group(1))
+        city = normalize_whitespace(match.group(2)) if match.lastindex and match.lastindex >= 2 and match.group(2) else None
+        state = normalize_state(match.group(3)) if match.lastindex and match.lastindex >= 3 else None
+        if not self._is_valid_person_name(name):
+            return None
+        return ExtractedSurvivor(
+            full_name=name,
+            relationship=relationship,
+            location_city=city,
+            location_state=state,
+        )
+
+    def _looks_like_survivor_fragment(self, fragment: str) -> bool:
+        lowered = fragment.lower()
+        if any(
+            phrase in lowered
+            for phrase in (
+                "funeral home",
+                "hospice",
+                "church activities",
+                "civic groups",
+                "dedication to the land",
+                "known for",
+                "family through",
+                "services will be held",
+                "visitation",
+            )
+        ):
+            return False
+        if lowered in {"south carolina", "north carolina", "minnesota", "iowa"}:
+            return False
+        return True
+
+    def _is_valid_person_name(self, value: str) -> bool:
+        lowered = value.lower().strip(" .,'")
+        if not lowered:
+            return False
+        if len(lowered.split()) > 5:
+            return False
+        if any(
+            token in lowered
+            for token in (
+                "grandchildren",
+                "great-grandchildren",
+                "nieces",
+                "nephews",
+                "family",
+                "church",
+                "community",
+                "hospice",
+                "dedication",
+                "activities",
+            )
+        ):
+            return False
+        if lowered in {"arizona", "minnesota", "south carolina", "north carolina", "iowa"}:
+            return False
+        if not re.search(r"[A-Z][a-z]+", value):
+            return False
+        return True

@@ -1,9 +1,20 @@
 FROM python:3.11-slim
 
+ENV POETRY_VIRTUALENVS_CREATE=false \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-COPY services/obituary-intelligence-engine/pyproject.toml /app/pyproject.toml
-RUN pip install --no-cache-dir poetry && poetry config virtualenvs.create false && poetry install --no-root --only main
+RUN pip install --no-cache-dir poetry==2.3.2
+
+COPY services/obituary-intelligence-engine/pyproject.toml services/obituary-intelligence-engine/poetry.lock /app/
+RUN poetry install --only main --no-root \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends libnss3 libnspr4 \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m playwright install-deps firefox \
+    && python -m rebrowser_playwright install chromium
 
 COPY services/obituary-intelligence-engine/src /app/src
 COPY services/obituary-intelligence-engine/nicknames.csv /app/nicknames.csv

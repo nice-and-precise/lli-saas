@@ -4,6 +4,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RENDERED_MANIFEST="/tmp/lli-saas-pilot-rendered.yaml"
+PILOT_VALUES_FILE="${PILOT_VALUES_FILE:-}"
+PILOT_RELEASE_MODE="${PILOT_RELEASE_MODE:-0}"
+HELM_VALUES_ARGS=()
 
 run_step() {
   local label="$1"
@@ -36,10 +39,40 @@ assert_in_file() {
   fi
 }
 
+if [[ -n "${PILOT_VALUES_FILE}" ]]; then
+  if [[ ! -f "${PILOT_VALUES_FILE}" ]]; then
+    echo "ERROR: PILOT_VALUES_FILE does not exist: ${PILOT_VALUES_FILE}" >&2
+    exit 1
+  fi
+
+  HELM_VALUES_ARGS=(-f "${PILOT_VALUES_FILE}")
+fi
+
+helm_lint_chart() {
+  local args=(helm lint infra/charts/lli-saas)
+
+  if [[ ${#HELM_VALUES_ARGS[@]} -gt 0 ]]; then
+    args+=("${HELM_VALUES_ARGS[@]}")
+  fi
+
+  "${args[@]}"
+}
+
+render_manifests() {
+  local args=(helm template lli-saas infra/charts/lli-saas)
+
+  if [[ ${#HELM_VALUES_ARGS[@]} -gt 0 ]]; then
+    args+=("${HELM_VALUES_ARGS[@]}")
+  fi
+
+  "${args[@]}" > "${RENDERED_MANIFEST}"
+}
+
 cd "${ROOT_DIR}"
 
-run_step "lead-engine tests" bash -lc 'cd services/lead-engine && python3 -m pytest'
-run_step "obituary-intelligence-engine tests" bash -lc 'cd services/obituary-intelligence-engine && python3 -m pytest'
+run_step "shared contract validation" python3 scripts/check-contracts.py
+run_step "lead-engine tests" bash -lc 'cd services/lead-engine && poetry run pytest'
+run_step "obituary-intelligence-engine tests" bash -lc 'cd services/obituary-intelligence-engine && poetry run pytest'
 run_step "crm-adapter tests" bash -lc 'cd services/crm-adapter && npm test'
 run_step "user-portal tests" bash -lc 'cd services/user-portal && npm test'
 run_step "user-portal build" bash -lc 'cd services/user-portal && npm run build'
@@ -47,8 +80,8 @@ run_step "lead-engine docker build" docker build -f services/lead-engine/Dockerf
 run_step "obituary-intelligence-engine docker build" docker build -f services/obituary-intelligence-engine/Dockerfile -t lli-saas/obituary-intelligence-engine:pilot-check .
 run_step "crm-adapter docker build" docker build -f services/crm-adapter/Dockerfile -t lli-saas/crm-adapter:pilot-check .
 run_step "user-portal docker build" docker build -t lli-saas/user-portal:pilot-check services/user-portal
-run_step "helm lint" helm lint infra/charts/lli-saas
-run_step "helm template" bash -lc "helm template lli-saas infra/charts/lli-saas > ${RENDERED_MANIFEST}"
+run_step "helm lint" helm_lint_chart
+run_step "helm template" render_manifests
 run_step "rendered manifest assertions" bash -lc "
   set -euo pipefail
   source /dev/stdin <<'EOF'
@@ -67,6 +100,17 @@ EOF
   assert_in_file 'kind: CronJob\nmetadata:\n  name: lead-engine-daily-scan' '${RENDERED_MANIFEST}' 'daily lead scan CronJob is missing from rendered manifests'
   assert_not_in_file 'http://reaper:8080|REAPER_BASE_URL' '${RENDERED_MANIFEST}' 'rendered manifests still contain legacy Reaper runtime wiring'
 "
+
+if [[ "${PILOT_RELEASE_MODE}" == "1" ]]; then
+  run_step "release candidate manifest assertions" bash -lc "
+    set -euo pipefail
+    source /dev/stdin <<'EOF'
+$(typeset -f assert_not_in_file)
+EOF
+    assert_not_in_file 'image: .*:latest' '${RENDERED_MANIFEST}' 'release manifests still use latest image tags'
+    assert_not_in_file 'change-me|portal\\.example\\.com|crm-adapter\\.example\\.com|lead-engine\\.example\\.com|pilot@example\\.com|replace-with-' '${RENDERED_MANIFEST}' 'release manifests still contain placeholder deployment values'
+  "
+fi
 
 run_step "active architecture guard" bash -lc '
   cd "'"${ROOT_DIR}"'"

@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "lint": "eslint src tests public/runtime-config.js vite.config.js eslint.config.js --max-warnings=0",
+    "format": "prettier --write \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\" \"public/**/*.js\" \"package.json\" \"vite.config.js\" \"eslint.config.js\" \"index.html\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,css}\" \"tests/**/*.{js,jsx}\" \"public/**/*.js\" \"package.json\" \"vite.config.js\" \"eslint.config.js\" \"index.html\"",
     "test": "vitest run"
   },
   "dependencies": {
@@ -14,12 +17,18 @@
     "react-router-dom": "^7.3.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
     "jsdom": "^26.0.0",
+    "prettier": "^3.8.1",
     "vite": "^6.2.1",
     "vitest": "^3.0.8"
   }
 }
-

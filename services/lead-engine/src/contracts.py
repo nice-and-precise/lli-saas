@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -120,6 +120,24 @@ class ScanError(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class ObituarySourceReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    strategy: str = Field(min_length=1)
+    listing_url: str = Field(min_length=1)
+    status: str = Field(min_length=1)
+    http_status: int | None = None
+    candidate_count: int = Field(default=0, ge=0)
+    obituary_count: int = Field(default=0, ge=0)
+    latest_published_at: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    region: str | None = None
+    supplemental: bool = False
+
+
 class ScanResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -129,16 +147,17 @@ class ScanResult(BaseModel):
     lead_count: int = Field(ge=0)
     delivery_summary: DeliverySummary = Field(default_factory=DeliverySummary)
     leads: list[Lead] = Field(default_factory=list)
+    source_reports: list[ObituarySourceReport] = Field(default_factory=list)
     errors: list[ScanError] = Field(default_factory=list)
 
 
 def load_lead_schema() -> dict[str, Any]:
-    return json.loads(LEAD_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(LEAD_CONTRACT_PATH.read_text(encoding="utf-8")))
 
 
 def load_owner_record_schema() -> dict[str, Any]:
-    return json.loads(OWNER_RECORD_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(OWNER_RECORD_CONTRACT_PATH.read_text(encoding="utf-8")))
 
 
 def load_scan_result_schema() -> dict[str, Any]:
-    return json.loads(SCAN_RESULT_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(SCAN_RESULT_CONTRACT_PATH.read_text(encoding="utf-8")))

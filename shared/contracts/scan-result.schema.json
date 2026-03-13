@@ -11,6 +11,7 @@
     "lead_count",
     "delivery_summary",
     "leads",
+    "source_reports",
     "errors"
   ],
   "properties": {
@@ -61,6 +62,92 @@
       "type": "array",
       "items": {
         "$ref": "https://lli-saas.local/contracts/lead.schema.json"
+      }
+    },
+    "source_reports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_id",
+          "label",
+          "strategy",
+          "listing_url",
+          "status",
+          "http_status",
+          "candidate_count",
+          "obituary_count",
+          "latest_published_at",
+          "error_code",
+          "error_message",
+          "region",
+          "supplemental"
+        ],
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "strategy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "listing_url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "http_status": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "candidate_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "obituary_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "latest_published_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "supplemental": {
+            "type": "boolean"
+          }
+        }
       }
     },
     "errors": {

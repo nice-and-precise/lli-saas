@@ -1,0 +1,16 @@
+{
+  "obituaries": [
+    {
+      "title": "Robert Henderson",
+      "url": "fixture://proof/robert-henderson",
+      "raw_text": "Robert Henderson passed away on March 5, 2026 in Boone, Iowa after a life devoted to family, farming, and service to his community. He is survived by son James Henderson of Phoenix, AZ and daughter Carol Metcalfe of Ames, IA. Robert was known for his kindness, his dedication to the land, and his years supporting local civic groups and church activities. Funeral services will be held on Saturday, with visitation on Friday evening for friends and family.",
+      "published_at": "2026-03-06T00:00:00Z"
+    },
+    {
+      "title": "Elaine Carter",
+      "url": "fixture://proof/elaine-carter",
+      "raw_text": "Elaine Carter passed away on March 8, 2026 in Boone, Iowa after a life devoted to family, farming, and service to her community. She is survived by son Luke Carter of Omaha, NE and daughter Hannah Carter of Boone, IA. Elaine was known for her kindness, her dedication to the land, and her years supporting local civic groups and church activities. Funeral services will be held on Saturday, with visitation on Friday evening for friends and family.",
+      "published_at": "2026-03-09T00:00:00Z"
+    }
+  ]
+}

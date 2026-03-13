@@ -106,11 +106,12 @@ describe("lead contract helpers", () => {
 
   it("emits mapped Monday column values using board column types", () => {
     const result = mapLeadToMondayItemWithMapping(
-      buildLead(),
+      buildLead({ idempotency_key: "lead:v1:test" }),
       {
         item_name_strategy: "deceased_name_county",
         columns: {
           deceased_name: "name",
+          idempotency_key: "dedupe_key",
           match_score: "confidence",
           obituary_url: "obit_link",
           tier: "status",
@@ -120,6 +121,7 @@ describe("lead contract helpers", () => {
       },
       [
         { id: "name", type: "text" },
+        { id: "dedupe_key", type: "text" },
         { id: "confidence", type: "numbers" },
         { id: "obit_link", type: "link" },
         { id: "status", type: "status" },
@@ -131,6 +133,7 @@ describe("lead contract helpers", () => {
     expect(result.itemName).toBe("Pat Example - Boone County");
     expect(result.columnValues).toEqual({
       name: "Pat Example",
+      dedupe_key: "lead:v1:test",
       confidence: 96.2,
       obit_link: { url: "https://example.com/obit", text: "View Obituary" },
       status: { label: "Hot" },

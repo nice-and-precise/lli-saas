@@ -21,6 +21,7 @@ const ALLOWED_MAPPED_FIELDS = new Set([
   "death_date",
   "obituary_source",
   "obituary_url",
+  "idempotency_key",
   "match_score",
   "match_status",
   "tier",
@@ -106,7 +107,9 @@ function validateLead(lead) {
   if (!lead.obituary || typeof lead.obituary !== "object" || Array.isArray(lead.obituary)) {
     throw new Error("Invalid lead field: obituary");
   }
-  ["url", "source_id"].forEach((field) => assertNonEmptyString(lead.obituary[field], `obituary.${field}`));
+  ["url", "source_id"].forEach((field) =>
+    assertNonEmptyString(lead.obituary[field], `obituary.${field}`),
+  );
   ["published_at", "death_date", "deceased_city", "deceased_state"].forEach((field) =>
     assertOptionalString(lead.obituary[field], `obituary.${field}`),
   );
@@ -134,7 +137,11 @@ function validateLead(lead) {
     throw new Error("Invalid lead field: out_of_state_states");
   }
 
-  if (!Array.isArray(lead.notes) || !Array.isArray(lead.tags) || !Array.isArray(lead.raw_artifacts)) {
+  if (
+    !Array.isArray(lead.notes) ||
+    !Array.isArray(lead.tags) ||
+    !Array.isArray(lead.raw_artifacts)
+  ) {
     throw new Error("Invalid lead list fields");
   }
 
@@ -150,7 +157,8 @@ function formatPropertyAddress(property) {
 function formatHeirs(heirs) {
   return heirs
     .map((heir) => {
-      const location = [heir.location_city, heir.location_state].filter(Boolean).join(", ") || "location unknown";
+      const location =
+        [heir.location_city, heir.location_state].filter(Boolean).join(", ") || "location unknown";
       const oosFlag = heir.out_of_state ? " [OOS]" : "";
       return `${heir.name} (${heir.relationship}) - ${location}${oosFlag}`;
     })
@@ -172,7 +180,9 @@ function buildItemName(lead, itemNameStrategy) {
 
   if (itemNameStrategy === "deceased_name_address") {
     const propertyAddress = formatPropertyAddress(lead.property);
-    return propertyAddress ? `${lead.deceased_name} - ${propertyAddress}` : lead.deceased_name.trim();
+    return propertyAddress
+      ? `${lead.deceased_name} - ${propertyAddress}`
+      : lead.deceased_name.trim();
   }
 
   const countySuffix = lead.property.county ? `${lead.property.county} County` : null;
@@ -220,7 +230,9 @@ function normalizeMappedValue(value, field, columnType) {
   }
 
   if (columnType === "link") {
-    return value ? { url: String(value), text: field === "obituary_url" ? "View Obituary" : String(value) } : null;
+    return value
+      ? { url: String(value), text: field === "obituary_url" ? "View Obituary" : String(value) }
+      : null;
   }
 
   if (columnType === "status") {
@@ -258,6 +270,7 @@ function mapLeadToMondayItemWithMapping(lead, mapping, boardColumns = []) {
     death_date: lead.obituary.death_date ?? "",
     obituary_source: lead.obituary.source_id,
     obituary_url: lead.obituary.url,
+    idempotency_key: lead.idempotency_key ?? "",
     match_score: lead.match.score,
     match_status: lead.match.status,
     tier: lead.tier,
@@ -276,7 +289,11 @@ function mapLeadToMondayItemWithMapping(lead, mapping, boardColumns = []) {
   const columnValues = Object.fromEntries(
     Object.entries(mapping.columns)
       .map(([field, columnId]) => {
-        const normalizedValue = normalizeMappedValue(summary[field], field, columnTypes.get(columnId));
+        const normalizedValue = normalizeMappedValue(
+          summary[field],
+          field,
+          columnTypes.get(columnId),
+        );
         if (normalizedValue == null || normalizedValue === "") {
           return null;
         }

@@ -10,11 +10,18 @@ from src.owner_corpus import OwnerFetchResponse
 
 
 def _resolve_base_url(base_url: str | None = None) -> str:
-    return (base_url or os.getenv("CRM_ADAPTER_BASE_URL", "")).rstrip("/")
+    resolved = base_url or os.getenv("CRM_ADAPTER_BASE_URL") or ""
+    return resolved.rstrip("/")
 
 
 class CRMAdapterError(Exception):
-    def __init__(self, code: str, message: str, details: dict | None = None, status_code: int = 502) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        details: dict[str, object] | None = None,
+        status_code: int = 502,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -27,7 +34,7 @@ class CRMAdapterClient:
         self.base_url = _resolve_base_url(base_url)
         self.timeout_seconds = timeout_seconds
 
-    def fetch_owner_records(self, *, tenant_id: str, owner_limit: int) -> OwnerFetchResponse:
+    def fetch_owner_records(self, *, owner_limit: int, bearer_token: str) -> OwnerFetchResponse:
         if not self.base_url:
             raise CRMAdapterError(
                 code="crm_adapter_not_configured",
@@ -38,7 +45,7 @@ class CRMAdapterClient:
             response = httpx.get(
                 f"{self.base_url}/owners",
                 params={"limit": owner_limit},
-                headers={"x-tenant-id": tenant_id},
+                headers={"Authorization": f"Bearer {bearer_token}"},
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()
@@ -68,7 +75,7 @@ class CRMAdapterClient:
                 details={"errors": exc.errors()},
             ) from exc
 
-    def deliver_lead(self, *, tenant_id: str, lead: Lead) -> dict:
+    def deliver_lead(self, *, lead: Lead, bearer_token: str) -> dict[str, object]:
         if not self.base_url:
             raise CRMAdapterError(
                 code="crm_adapter_not_configured",
@@ -79,7 +86,7 @@ class CRMAdapterClient:
             response = httpx.post(
                 f"{self.base_url}/leads",
                 json=lead.model_dump(mode="json"),
-                headers={"x-tenant-id": tenant_id},
+                headers={"Authorization": f"Bearer {bearer_token}"},
                 timeout=self.timeout_seconds,
             )
             payload = response.json()
@@ -95,6 +102,13 @@ class CRMAdapterClient:
                 message="crm-adapter returned an invalid lead delivery response",
                 details={"error": str(exc)},
             ) from exc
+
+        if not isinstance(payload, dict):
+            raise CRMAdapterError(
+                code="invalid_delivery_response",
+                message="crm-adapter returned an invalid lead delivery response",
+                details={"response_body": payload},
+            )
 
         if response.status_code not in {200, 201}:
             raise CRMAdapterError(

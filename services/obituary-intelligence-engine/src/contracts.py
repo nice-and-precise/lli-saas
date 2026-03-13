@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -123,6 +123,40 @@ class ObituaryEngineRunScanRequest(BaseModel):
     source_ids: list[str] = Field(default_factory=list)
 
 
+class ObituarySourceReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    strategy: Literal[
+        "rss_feed",
+        "html_listing_gannett",
+        "html_listing_blox",
+        "html_listing_custom",
+        "html_listing_funeral_home",
+    ]
+    listing_url: str = Field(min_length=1)
+    status: Literal["healthy", "blocked", "empty", "stale", "error"]
+    http_status: int | None = None
+    candidate_count: int = Field(default=0, ge=0)
+    obituary_count: int = Field(default=0, ge=0)
+    latest_published_at: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    region: str | None = None
+    supplemental: bool = False
+
+
+class ObituaryEngineIssue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage: Literal["collection", "extraction"]
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    source_id: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 class ObituaryEngineScanResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -130,11 +164,23 @@ class ObituaryEngineScanResult(BaseModel):
     run_started_at: str
     run_completed_at: str
     leads: list[Lead] = Field(default_factory=list)
+    source_reports: list[ObituarySourceReport] = Field(default_factory=list)
+    errors: list[ObituaryEngineIssue] = Field(default_factory=list)
+
+
+class SourceHealthResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    generated_at: str
+    proof_target_count: int = Field(default=0, ge=0)
+    healthy_source_count: int = Field(default=0, ge=0)
+    source_reports: list[ObituarySourceReport] = Field(default_factory=list)
+    errors: list[ObituaryEngineIssue] = Field(default_factory=list)
 
 
 def load_lead_schema() -> dict[str, Any]:
-    return json.loads(LEAD_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(LEAD_CONTRACT_PATH.read_text(encoding="utf-8")))
 
 
 def load_owner_record_schema() -> dict[str, Any]:
-    return json.loads(OWNER_RECORD_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(OWNER_RECORD_CONTRACT_PATH.read_text(encoding="utf-8")))

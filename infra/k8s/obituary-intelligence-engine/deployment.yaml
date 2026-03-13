@@ -24,6 +24,47 @@ spec:
               value: "30"
             - name: OBITUARY_HTTP_TIMEOUT_SECONDS
               value: "10"
+            - name: HEIR_EXTRACTION_PRIMARY_PROVIDER
+              value: "gemini"
+            - name: HEIR_EXTRACTION_PRIMARY_MODEL
+              value: "gemini-2.5-flash"
+            - name: HEIR_EXTRACTION_FALLBACK_PROVIDER
+              value: "gemini"
+            - name: HEIR_EXTRACTION_FALLBACK_MODEL
+              value: "gemini-1.5-flash"
+            - name: HEIR_EXTRACTION_FINAL_PROVIDER
+              value: "anthropic"
+            - name: HEIR_EXTRACTION_FINAL_MODEL
+              value: "claude-3-7-sonnet-latest"
+            - name: AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-shared-auth
+                  key: AUTH_JWT_SECRET
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-obituary-provider-secrets
+                  key: GEMINI_API_KEY
+                  optional: true
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-obituary-provider-secrets
+                  key: GOOGLE_API_KEY
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-obituary-provider-secrets
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+            - name: AUTH_JWT_ISSUER
+              value: "lli-saas-pilot"
+            - name: AUTH_JWT_AUDIENCE
+              value: "lli-saas"
+            - name: AUTH_ALLOWED_ORIGINS
+              value: "https://portal.example.com"
           volumeMounts:
             - name: obituary-engine-state
               mountPath: "/var/lib/lli-saas/obituary-intelligence-engine"

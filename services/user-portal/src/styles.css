@@ -132,6 +132,17 @@ a {
   cursor: pointer;
 }
 
+.button-link {
+  display: inline-block;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: #0d5c63;
+  color: #fff;
+  padding: 14px 18px;
+  font-size: 1rem;
+  text-decoration: none;
+}
+
 .subtle {
   color: #44545d;
 }

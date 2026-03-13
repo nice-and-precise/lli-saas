@@ -45,8 +45,4 @@ function getRequiredServiceBaseUrl(key) {
   );
 }
 
-export {
-  getRequiredServiceBaseUrl,
-  readRuntimeConfig,
-  resolveServiceBaseUrl,
-};
+export { getRequiredServiceBaseUrl, readRuntimeConfig, resolveServiceBaseUrl };

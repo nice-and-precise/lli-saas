@@ -33,6 +33,34 @@ class ObituaryEngineScanRequest(BaseModel):
     source_ids: list[str] = Field(default_factory=list)
 
 
+class ObituarySourceReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str
+    label: str
+    strategy: str
+    listing_url: str
+    status: str
+    http_status: int | None = None
+    candidate_count: int = 0
+    obituary_count: int = 0
+    latest_published_at: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    region: str | None = None
+    supplemental: bool = False
+
+
+class ObituaryEngineIssue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage: str
+    code: str
+    message: str
+    source_id: str | None = None
+    details: dict = Field(default_factory=dict)
+
+
 class ObituaryEngineScanResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -40,10 +68,17 @@ class ObituaryEngineScanResult(BaseModel):
     run_started_at: str
     run_completed_at: str
     leads: list[Lead] = Field(default_factory=list)
+    source_reports: list[ObituarySourceReport] = Field(default_factory=list)
+    errors: list[ObituaryEngineIssue] = Field(default_factory=list)
 
 
 class ObituaryEngine(Protocol):
-    def run_scan(self, request: ObituaryEngineScanRequest) -> ObituaryEngineScanResult:
+    def run_scan(
+        self,
+        request: ObituaryEngineScanRequest,
+        *,
+        bearer_token: str,
+    ) -> ObituaryEngineScanResult:
         ...
 
 
@@ -52,7 +87,12 @@ class HttpObituaryEngine:
         self.base_url = _resolve_base_url(base_url)
         self.timeout_seconds = timeout_seconds
 
-    def run_scan(self, request: ObituaryEngineScanRequest) -> ObituaryEngineScanResult:
+    def run_scan(
+        self,
+        request: ObituaryEngineScanRequest,
+        *,
+        bearer_token: str,
+    ) -> ObituaryEngineScanResult:
         if not self.base_url:
             raise ObituaryEngineError(
                 code="obituary_engine_not_configured",
@@ -65,6 +105,7 @@ class HttpObituaryEngine:
             response = httpx.post(
                 f"{self.base_url}/run-scan",
                 json=payload,
+                headers={"Authorization": f"Bearer {bearer_token}"},
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()

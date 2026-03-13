@@ -21,13 +21,44 @@ spec:
             - name: PORT
               value: "3000"
             - name: MONDAY_CLIENT_ID
-              value: "change-me"
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-crm-adapter-secrets
+                  key: MONDAY_CLIENT_ID
             - name: MONDAY_CLIENT_SECRET
-              value: "change-me"
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-crm-adapter-secrets
+                  key: MONDAY_CLIENT_SECRET
             - name: MONDAY_REDIRECT_URI
               value: "http://crm-adapter:3000/auth/callback"
             - name: CRM_ADAPTER_STATE_PATH
               value: "/var/lib/lli-saas/crm-adapter/monday-state.json"
+            - name: AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-shared-auth
+                  key: AUTH_JWT_SECRET
+            - name: AUTH_JWT_ISSUER
+              value: "lli-saas-pilot"
+            - name: AUTH_JWT_AUDIENCE
+              value: "lli-saas"
+            - name: AUTH_ALLOWED_ORIGINS
+              value: "https://portal.example.com"
+            - name: OPERATOR_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-crm-adapter-secrets
+                  key: OPERATOR_EMAIL
+            - name: OPERATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-crm-adapter-secrets
+                  key: OPERATOR_PASSWORD
+            - name: OPERATOR_TENANT_ID
+              value: "pilot"
+            - name: OPERATOR_PORTAL_BASE_URL
+              value: "https://portal.example.com"
           volumeMounts:
             - name: crm-adapter-state
               mountPath: "/var/lib/lli-saas/crm-adapter"
@@ -39,11 +70,11 @@ spec:
             httpGet:
               path: /ready
               port: 3000
-      volumes:
-        - name: crm-adapter-state
-          persistentVolumeClaim:
-            claimName: crm-adapter-state
           livenessProbe:
             httpGet:
               path: /ready
               port: 3000
+      volumes:
+        - name: crm-adapter-state
+          persistentVolumeClaim:
+            claimName: crm-adapter-state

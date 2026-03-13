@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
 from html import unescape
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
-
+from bs4.element import PageElement
 
 MONTH_LOOKUP = {
     "january": 1,
@@ -234,14 +234,30 @@ SURVIVOR_KEYWORDS = [
     "daughters:",
 ]
 
+OBITUARY_CONTEXT_KEYWORDS = [
+    "passed away",
+    "died",
+    "obituary",
+    "funeral",
+    "visitation",
+    "memorial",
+    "celebration of life",
+    "services will be held",
+    "survived by",
+]
+
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def canonicalize_url(url: str) -> str:
     parts = urlsplit(url.strip())
-    filtered_query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if not key.startswith("utm_") and key not in {"fbclid", "gclid"}]
+    filtered_query = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if not key.startswith("utm_") and key not in {"fbclid", "gclid"}
+    ]
     return urlunsplit((parts.scheme, parts.netloc.lower(), parts.path.rstrip("/"), urlencode(filtered_query), ""))
 
 
@@ -251,6 +267,66 @@ def html_to_text(value: str) -> str:
     soup = BeautifulSoup(value, "lxml")
     text = soup.get_text(" ", strip=True)
     return normalize_whitespace(unescape(text))
+
+
+def extract_content_text(value: str, selectors: tuple[str, ...] = ()) -> str:
+    if not value:
+        return ""
+
+    soup = BeautifulSoup(value, "lxml")
+    for selector in (
+        "script",
+        "style",
+        "noscript",
+        "svg",
+        "header",
+        "footer",
+        "nav",
+        "aside",
+        "form",
+        "button",
+        ".ad",
+        ".ads",
+        ".advertisement",
+        ".newsletter",
+        ".social-share",
+        ".related-links",
+        ".recommended",
+        ".site-header",
+        ".site-footer",
+        ".breadcrumbs",
+    ):
+        for node in soup.select(selector):
+            node.decompose()
+
+    selected_nodes: list[PageElement] = []
+    for selector in selectors:
+        nodes = soup.select(selector)
+        if nodes:
+            selected_nodes = list(nodes)
+            break
+
+    if not selected_nodes:
+        for selector in (
+            "article",
+            "main",
+            ".article-body",
+            ".asset-body",
+            ".content-body",
+            ".obituary-content",
+            ".obit-body",
+            "[itemprop='articleBody']",
+        ):
+            nodes = soup.select(selector)
+            if nodes:
+                selected_nodes = list(nodes)
+                break
+
+    if selected_nodes:
+        text = " ".join(node.get_text(" ", strip=True) for node in selected_nodes)
+        return normalize_whitespace(unescape(text))
+
+    return normalize_whitespace(unescape(soup.get_text(" ", strip=True)))
 
 
 def normalize_whitespace(value: str) -> str:
@@ -265,14 +341,14 @@ def parse_optional_datetime(value: str | None) -> datetime | None:
     except (TypeError, ValueError, IndexError):
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def isoformat_or_none(value: datetime | None) -> str | None:
     if value is None:
         return None
-    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return value.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def normalize_state(value: str | None) -> str | None:
@@ -308,7 +384,7 @@ def extract_death_date(text: str, published_at: datetime | None) -> str | None:
         if not match:
             continue
         parsed = parse_month_date(match.group(1))
-        if parsed:
+        if parsed and _death_date_is_reasonable(parsed, published_at):
             return parsed.isoformat()
 
     if published_at:
@@ -333,22 +409,30 @@ def extract_iowa_location(text: str) -> tuple[str | None, str | None]:
                 continue
             return city.title(), "IA"
 
-    for city in sorted(IOWA_CITIES, key=len, reverse=True):
-        if city in lowered[:1000]:
-            return city.title(), "IA"
-
     return None, None
 
 
 def is_iowa_relevant(text: str, city: str | None, state: str | None) -> bool:
     lowered = text.lower()
+    if not has_obituary_context(text):
+        return False
     if state == "IA":
         return True
     if city and city.lower() in IOWA_CITIES:
         return True
     if any(f"{county} county" in lowered for county in IOWA_COUNTIES):
         return True
-    return " iowa" in lowered or ", ia" in lowered
+    return bool(re.search(r"\b(?:in|of|from|born in|died in)\s+[a-z .'-]+,\s*(?:ia|iowa)\b", lowered))
+
+
+def has_obituary_context(text: str) -> bool:
+    lowered = text.lower()
+    return any(keyword in lowered for keyword in OBITUARY_CONTEXT_KEYWORDS)
+
+
+def is_obituary_listing_text(title: str, text: str) -> bool:
+    lowered = f"{title} {text}".lower()
+    return any(keyword in lowered for keyword in OBITUARY_CONTEXT_KEYWORDS)
 
 
 def has_survivor_signal(text: str) -> bool:
@@ -374,3 +458,12 @@ def detect_out_of_state_survivor_states(text: str) -> tuple[bool, list[str], str
                 evidence = normalize_whitespace(window)
 
     return bool(states), sorted(states), evidence
+
+
+def _death_date_is_reasonable(value: date, published_at: datetime | None) -> bool:
+    if published_at is None:
+        return value.year >= 2020
+    published_date = published_at.date()
+    if value > published_date:
+        return False
+    return (published_date - value).days <= 366

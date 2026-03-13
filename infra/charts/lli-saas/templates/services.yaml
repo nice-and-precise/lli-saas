@@ -7,8 +7,7 @@ spec:
   selector:
     app: {{ $svc.name }}
   ports:
-    - port: {{ $svc.port }}
+    - port: {{ default $svc.port $svc.servicePort }}
       targetPort: {{ $svc.port }}
 ---
 {{- end }}
-

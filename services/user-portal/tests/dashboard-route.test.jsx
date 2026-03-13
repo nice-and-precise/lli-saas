@@ -3,10 +3,12 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 
 import App from "../src/App";
+import { SESSION_STORAGE_KEY } from "../src/session";
 
 afterEach(() => {
   vi.restoreAllMocks();
   delete globalThis.__LLI_RUNTIME_CONFIG__;
+  localStorage.clear();
 });
 
 test("renders live dashboard status, saves mapping, and runs the obituary scan flow", async () => {
@@ -14,15 +16,36 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
     crmAdapterBaseUrl: "https://crm-adapter.example.com",
     leadEngineBaseUrl: "https://lead-engine.example.com",
   };
+  localStorage.setItem(SESSION_STORAGE_KEY, "jwt-token");
 
   const fetchMock = vi
     .spyOn(globalThis, "fetch")
     .mockResolvedValueOnce({
       ok: true,
       json: async () => ({
+        sub: "pilot@example.com",
+        role: "operator",
         tenant_id: "pilot",
-        board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
-        deliveries: [{ id: "delivery-1", item_name: "Pat Example - Boone County", status: "created", scan_id: "scan-1", summary: { tier: "hot" } }],
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tenant_id: "pilot",
+        board: {
+          id: "board-1",
+          name: "Pilot Leads",
+          columns: [{ id: "name", title: "Name", type: "text" }],
+        },
+        deliveries: [
+          {
+            id: "delivery-1",
+            item_name: "Pat Example - Boone County",
+            status: "created",
+            scan_id: "scan-1",
+            summary: { tier: "hot" },
+          },
+        ],
         scan_runs: [{ scan_id: "scan-1", last_delivery_status: "created" }],
         latest_delivery: {
           id: "delivery-1",
@@ -48,8 +71,18 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
     .mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        boards: [{ id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] }],
-        selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
+        boards: [
+          {
+            id: "board-1",
+            name: "Pilot Leads",
+            columns: [{ id: "name", title: "Name", type: "text" }],
+          },
+        ],
+        selected_board: {
+          id: "board-1",
+          name: "Pilot Leads",
+          columns: [{ id: "name", title: "Name", type: "text" }],
+        },
       }),
     })
     .mockResolvedValueOnce({
@@ -76,15 +109,39 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
         lead_count: 2,
         delivery_summary: { created: 2, skipped_duplicate: 0, failed: 0 },
         leads: [],
+        source_reports: [
+          { source_id: "sioux_city_journal", status: "healthy" },
+          { source_id: "kwbg_boone", status: "empty" },
+        ],
         errors: [],
       }),
     })
     .mockResolvedValueOnce({
       ok: true,
       json: async () => ({
+        sub: "pilot@example.com",
+        role: "operator",
         tenant_id: "pilot",
-        board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
-        deliveries: [{ id: "delivery-2", item_name: "Taylor Example - Boone County", status: "created", scan_id: "scan-2", summary: { tier: "pending_review" } }],
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        tenant_id: "pilot",
+        board: {
+          id: "board-1",
+          name: "Pilot Leads",
+          columns: [{ id: "name", title: "Name", type: "text" }],
+        },
+        deliveries: [
+          {
+            id: "delivery-2",
+            item_name: "Taylor Example - Boone County",
+            status: "created",
+            scan_id: "scan-2",
+            summary: { tier: "pending_review" },
+          },
+        ],
         scan_runs: [{ scan_id: "scan-2", last_delivery_status: "created" }],
         latest_delivery: {
           id: "delivery-2",
@@ -111,8 +168,18 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
     .mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        boards: [{ id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] }],
-        selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
+        boards: [
+          {
+            id: "board-1",
+            name: "Pilot Leads",
+            columns: [{ id: "name", title: "Name", type: "text" }],
+          },
+        ],
+        selected_board: {
+          id: "board-1",
+          name: "Pilot Leads",
+          columns: [{ id: "name", title: "Name", type: "text" }],
+        },
       }),
     });
 
@@ -122,10 +189,10 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
     </MemoryRouter>,
   );
 
-  expect(screen.getByRole("heading", { name: /obituary intelligence cockpit/i })).toBeInTheDocument();
-  await waitFor(() =>
-    expect(screen.getAllByText(/pilot leads/i).length).toBeGreaterThan(0),
-  );
+  expect(
+    screen.getByRole("heading", { name: /obituary intelligence cockpit/i }),
+  ).toBeInTheDocument();
+  await waitFor(() => expect(screen.getAllByText(/pilot leads/i).length).toBeGreaterThan(0));
   expect(screen.getAllByText(/deceased_name_county/i).length).toBeGreaterThan(0);
 
   fireEvent.change(screen.getByLabelText(/^obituary_url$/i), {
@@ -135,22 +202,37 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
 
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
+      "https://crm-adapter.example.com/session/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer jwt-token",
+        }),
+      }),
+    ),
+  );
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
       "https://crm-adapter.example.com/mapping",
       expect.objectContaining({
         method: "PUT",
+        headers: expect.objectContaining({
+          Authorization: "Bearer jwt-token",
+        }),
       }),
     ),
   );
 
   fireEvent.click(screen.getByRole("button", { name: /run obituary scan/i }));
 
-  await waitFor(() =>
-    expect(screen.getAllByText(/scan-2/i).length).toBeGreaterThan(0),
-  );
+  await waitFor(() => expect(screen.getAllByText(/scan-2/i).length).toBeGreaterThan(0));
+  expect(screen.getByText(/1 empty, 1 healthy/i)).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledWith(
     "https://lead-engine.example.com/run-scan",
     expect.objectContaining({
       method: "POST",
+      headers: expect.objectContaining({
+        Authorization: "Bearer jwt-token",
+      }),
     }),
   );
 });

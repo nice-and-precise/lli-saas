@@ -1,12 +1,13 @@
 const fs = require("fs");
+const fsPromises = require("fs/promises");
 const os = require("os");
 const path = require("path");
 
 const {
-  createDefaultMapping,
   DEFAULT_STATE_PATH,
   DEFAULT_TENANT_ID,
   FileTokenStore,
+  TokenStoreCorruptionError,
 } = require("../src/tokenStore");
 
 describe("FileTokenStore", () => {
@@ -61,6 +62,7 @@ describe("FileTokenStore", () => {
     });
     expect(tenantState.scan_runs).toEqual([{ scan_id: "scan-1", status: "completed" }]);
     expect(tenantState.deliveries).toEqual([{ delivery_id: "delivery-1", status: "created" }]);
+    expect(tenantState.idempotency_index).toEqual({});
   });
 
   it("uses CRM_ADAPTER_STATE_PATH when no explicit file path is provided", () => {
@@ -72,5 +74,75 @@ describe("FileTokenStore", () => {
 
     delete process.env.CRM_ADAPTER_STATE_PATH;
     expect(DEFAULT_STATE_PATH).toBe("/var/lib/lli-saas/crm-adapter/monday-state.json");
+  });
+
+  it("fails loudly and quarantines corrupt state files", async () => {
+    const filePath = path.join(os.tmpdir(), `lli-saas-corrupt-${Date.now()}.json`);
+    fs.writeFileSync(filePath, "{not-json", "utf-8");
+    const store = new FileTokenStore({ filePath });
+
+    await expect(store.getState()).rejects.toBeInstanceOf(TokenStoreCorruptionError);
+
+    const quarantineFiles = fs
+      .readdirSync(path.dirname(filePath))
+      .filter((entry) => entry.startsWith(path.basename(filePath) + ".corrupt-"));
+
+    expect(quarantineFiles.length).toBeGreaterThan(0);
+    expect(fs.readFileSync(filePath, "utf-8")).toBe("{not-json");
+  });
+
+  it("preserves the original state document when an atomic rename fails", async () => {
+    const filePath = path.join(os.tmpdir(), `lli-saas-atomic-${Date.now()}.json`);
+    const store = new FileTokenStore({ filePath });
+    await store.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+    });
+
+    const renameSpy = vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(new Error("disk full"));
+
+    await expect(
+      store.saveState({
+        board: {
+          id: "board-1",
+          name: "Leads",
+        },
+      }),
+    ).rejects.toThrow("disk full");
+
+    renameSpy.mockRestore();
+
+    const persisted = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    expect(persisted.tokens.monday_access_token).toBe("token-123");
+    expect(persisted.board).toBeNull();
+
+    const tempFiles = fs
+      .readdirSync(path.dirname(filePath))
+      .filter((entry) => entry.startsWith(path.basename(filePath) + ".tmp-"));
+    expect(tempFiles).toEqual([]);
+  });
+
+  it("serializes concurrent writes so state updates are not lost", async () => {
+    const filePath = path.join(os.tmpdir(), `lli-saas-concurrent-${Date.now()}.json`);
+    const storeA = new FileTokenStore({ filePath });
+    const storeB = new FileTokenStore({ filePath });
+
+    await Promise.all([
+      storeA.saveState({
+        tokens: {
+          monday_access_token: "token-123",
+        },
+      }),
+      storeB.saveTenantState(DEFAULT_TENANT_ID, {
+        deliveries: [{ id: "delivery-1", status: "created" }],
+      }),
+    ]);
+
+    const persisted = await storeA.getState();
+    const tenantState = await storeA.getTenantState(DEFAULT_TENANT_ID);
+
+    expect(persisted.tokens.monday_access_token).toBe("token-123");
+    expect(tenantState.deliveries).toEqual([{ id: "delivery-1", status: "created" }]);
   });
 });

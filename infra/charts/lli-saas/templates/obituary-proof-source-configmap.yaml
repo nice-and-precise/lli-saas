@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-proof-source" .Values.services.obituaryIntelligenceEngine.name }}
+data:
+  proof-source.json: |-
+{{ .Files.Get "files/obituary-proof-source.json" | indent 4 }}

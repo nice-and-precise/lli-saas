@@ -13,22 +13,47 @@ spec:
       labels:
         app: {{ $svc.name }}
     spec:
+{{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+{{- range . }}
+        - name: {{ . | quote }}
+{{- end }}
+{{- end }}
       containers:
         - name: {{ $svc.name }}
-          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          image: {{ include "lli-saas.imageRef" $svc.image | quote }}
+{{- if $svc.image.pullPolicy }}
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+{{- end }}
           ports:
             - containerPort: {{ $svc.port }}
-{{- if $svc.env }}
+{{- if or $svc.env $svc.secretEnv }}
           env:
 {{- range $envKey, $envValue := $svc.env }}
             - name: {{ $envKey }}
               value: {{ $envValue | quote }}
 {{- end }}
+{{- range $envKey, $secretRef := $svc.secretEnv }}
+            - name: {{ $envKey }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretRef.secretName | quote }}
+                  key: {{ $secretRef.secretKey | quote }}
+{{- if hasKey $secretRef "optional" }}
+                  optional: {{ $secretRef.optional }}
 {{- end }}
-{{- if and $svc.persistence $svc.persistence.enabled }}
+{{- end }}
+{{- end }}
+{{- if or (and $svc.persistence $svc.persistence.enabled) (eq $svc.name "obituary-intelligence-engine") }}
           volumeMounts:
+{{- if and $svc.persistence $svc.persistence.enabled }}
             - name: {{ $svc.persistence.claimName }}
               mountPath: {{ $svc.persistence.mountPath | quote }}
+{{- end }}
+{{- if eq $svc.name "obituary-intelligence-engine" }}
+            - name: {{ printf "%s-proof-source" $svc.name }}
+              mountPath: /app/fixtures
+{{- end }}
 {{- end }}
           resources:
 {{ toYaml $svc.resources | indent 12 }}
@@ -42,11 +67,18 @@ spec:
               path: {{ $svc.probes.path }}
               port: {{ $svc.port }}
 {{- end }}
-{{- if and $svc.persistence $svc.persistence.enabled }}
+{{- if or (and $svc.persistence $svc.persistence.enabled) (eq $svc.name "obituary-intelligence-engine") }}
       volumes:
+{{- if and $svc.persistence $svc.persistence.enabled }}
         - name: {{ $svc.persistence.claimName }}
           persistentVolumeClaim:
             claimName: {{ $svc.persistence.claimName }}
+{{- end }}
+{{- if eq $svc.name "obituary-intelligence-engine" }}
+        - name: {{ printf "%s-proof-source" $svc.name }}
+          configMap:
+            name: {{ printf "%s-proof-source" $svc.name }}
+{{- end }}
 {{- end }}
 ---
 {{- end }}

@@ -24,6 +24,17 @@ spec:
               value: "http://crm-adapter:3000"
             - name: OBITUARY_ENGINE_BASE_URL
               value: "http://obituary-intelligence-engine:8080"
+            - name: AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: lli-saas-shared-auth
+                  key: AUTH_JWT_SECRET
+            - name: AUTH_JWT_ISSUER
+              value: "lli-saas-pilot"
+            - name: AUTH_JWT_AUDIENCE
+              value: "lli-saas"
+            - name: AUTH_ALLOWED_ORIGINS
+              value: "https://portal.example.com"
           resources:
             requests:
               cpu: 250m

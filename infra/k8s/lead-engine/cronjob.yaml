@@ -13,12 +13,18 @@ spec:
           containers:
             - name: lead-engine-daily-scan
               image: curlimages/curl:8.12.1
+              env:
+                - name: LEAD_ENGINE_CRON_JWT
+                  valueFrom:
+                    secretKeyRef:
+                      name: lli-saas-lead-engine-cron
+                      key: LEAD_ENGINE_CRON_JWT
               args:
                 - /bin/sh
                 - -c
                 - >
                   curl --fail --silent --show-error
                   -H "Content-Type: application/json"
-                  -H "x-tenant-id: pilot"
+                  -H "Authorization: Bearer $LEAD_ENGINE_CRON_JWT"
                   -d '{"owner_limit":10000,"lookback_days":7,"source_ids":[]}'
                   http://lead-engine:8000/run-scan

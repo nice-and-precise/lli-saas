@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
+from typing import Literal
 
 from nameparser import HumanName
 from rapidfuzz import fuzz
@@ -19,7 +20,7 @@ class MatchCandidate:
         last_name_score: float,
         first_name_score: float,
         location_bonus_applied: bool,
-        status: str,
+        status: Literal["auto_confirmed", "pending_review"],
     ) -> None:
         self.owner_record = owner_record
         self.score = score

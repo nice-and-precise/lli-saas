@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { createLogger } = require("./logger");
 const {
   CREATE_ITEM_MUTATION,
   LIST_BOARDS_QUERY,
@@ -19,6 +20,7 @@ class MondayClient {
     apiBaseUrl = "https://api.monday.com/v2",
     httpClient = axios,
     sleep = wait,
+    logger = createLogger("crm-adapter"),
   }) {
     this.clientId = clientId;
     this.clientSecret = clientSecret;
@@ -27,6 +29,7 @@ class MondayClient {
     this.apiBaseUrl = apiBaseUrl;
     this.httpClient = httpClient;
     this.sleep = sleep;
+    this.logger = logger;
   }
 
   getAuthorizationUrl(state = "lli-saas-state") {
@@ -50,7 +53,7 @@ class MondayClient {
     return response.data;
   }
 
-  async executeGraphQL({ query, variables = {}, token }) {
+  async executeGraphQL({ query, variables = {}, token, context = {} }) {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
         const response = await this.httpClient.post(
@@ -67,15 +70,35 @@ class MondayClient {
 
         if (response.status === 429) {
           if (attempt === 3) {
+            this.logger.error("monday_api_request_failed", {
+              tenant_id: context.tenant_id ?? null,
+              scan_id: context.scan_id ?? null,
+              attempt,
+              status_code: response.status,
+              reason: "rate_limited",
+            });
             throw new Error("Monday API rate limit exceeded after 3 attempts");
           }
 
           const retryAfter = Number(response.headers["retry-after"] ?? attempt);
+          this.logger.warn("monday_api_request_retry", {
+            tenant_id: context.tenant_id ?? null,
+            scan_id: context.scan_id ?? null,
+            attempt,
+            retry_after_seconds: retryAfter,
+            status_code: response.status,
+          });
           await this.sleep(retryAfter * 1000);
           continue;
         }
 
         if (response.status >= 400) {
+          this.logger.error("monday_api_request_failed", {
+            tenant_id: context.tenant_id ?? null,
+            scan_id: context.scan_id ?? null,
+            attempt,
+            status_code: response.status,
+          });
           throw new Error(`Monday API request failed with status ${response.status}`);
         }
 
@@ -84,6 +107,13 @@ class MondayClient {
             .map((error) => error.message)
             .filter(Boolean)
             .join("; ");
+          this.logger.error("monday_api_request_failed", {
+            tenant_id: context.tenant_id ?? null,
+            scan_id: context.scan_id ?? null,
+            attempt,
+            reason: "graphql_errors",
+            details: message || "Monday API returned GraphQL errors",
+          });
           throw new Error(message || "Monday API returned GraphQL errors");
         }
 
@@ -93,10 +123,24 @@ class MondayClient {
 
         if (status === 429 && attempt < 3) {
           const retryAfter = Number(error.response?.headers?.["retry-after"] ?? attempt);
+          this.logger.warn("monday_api_request_retry", {
+            tenant_id: context.tenant_id ?? null,
+            scan_id: context.scan_id ?? null,
+            attempt,
+            retry_after_seconds: retryAfter,
+            status_code: status,
+          });
           await this.sleep(retryAfter * 1000);
           continue;
         }
 
+        this.logger.error("monday_api_request_failed", {
+          tenant_id: context.tenant_id ?? null,
+          scan_id: context.scan_id ?? null,
+          attempt,
+          error: error.message,
+          status_code: status ?? null,
+        });
         throw error;
       }
     }
@@ -104,16 +148,17 @@ class MondayClient {
     throw new Error("Monday API rate limit exceeded after 3 attempts");
   }
 
-  async listBoards(token) {
+  async listBoards(token, context = {}) {
     const response = await this.executeGraphQL({
       query: LIST_BOARDS_QUERY,
       token,
+      context,
     });
 
     return response.data?.boards ?? [];
   }
 
-  async listBoardItemsPage({ token, boardId, limit = 500 }) {
+  async listBoardItemsPage({ token, boardId, limit = 500, context = {} }) {
     const response = await this.executeGraphQL({
       query: LIST_BOARD_ITEMS_PAGE_QUERY,
       variables: {
@@ -121,6 +166,7 @@ class MondayClient {
         limit,
       },
       token,
+      context,
     });
 
     const itemsPage = response.data?.boards?.[0]?.items_page ?? {};
@@ -130,7 +176,7 @@ class MondayClient {
     };
   }
 
-  async nextBoardItemsPage({ token, cursor, limit = 500 }) {
+  async nextBoardItemsPage({ token, cursor, limit = 500, context = {} }) {
     const response = await this.executeGraphQL({
       query: NEXT_BOARD_ITEMS_PAGE_QUERY,
       variables: {
@@ -138,6 +184,7 @@ class MondayClient {
         limit,
       },
       token,
+      context,
     });
 
     const itemsPage = response.data?.next_items_page ?? {};
@@ -147,13 +194,14 @@ class MondayClient {
     };
   }
 
-  async listBoardItems({ token, boardId, limit = 10000 }) {
+  async listBoardItems({ token, boardId, limit = 10000, context = {} }) {
     const pageSize = Math.min(Math.max(limit, 1), 500);
     const collected = [];
     let page = await this.listBoardItemsPage({
       token,
       boardId,
       limit: pageSize,
+      context,
     });
 
     collected.push(...page.items);
@@ -163,6 +211,7 @@ class MondayClient {
         token,
         cursor: page.cursor,
         limit: Math.min(limit - collected.length, 500),
+        context,
       });
       collected.push(...page.items);
     }
@@ -170,7 +219,7 @@ class MondayClient {
     return collected.slice(0, limit);
   }
 
-  async createItem({ token, boardId, itemName, columnValues = {} }) {
+  async createItem({ token, boardId, itemName, columnValues = {}, context = {} }) {
     const response = await this.executeGraphQL({
       query: CREATE_ITEM_MUTATION,
       variables: {
@@ -179,6 +228,7 @@ class MondayClient {
         columnValues: JSON.stringify(columnValues),
       },
       token,
+      context,
     });
 
     return response.data?.create_item ?? null;

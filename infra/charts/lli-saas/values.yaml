@@ -1,9 +1,14 @@
+imagePullSecrets: []
+
 services:
   leadEngine:
     name: lead-engine
     image:
       repository: ghcr.io/nice-and-precise/lli-saas-lead-engine
       tag: latest
+      digest: ""
+      reference: ""
+      pullPolicy: IfNotPresent
     port: 8000
     replicas: 1
     resources:
@@ -16,11 +21,21 @@ services:
     env:
       CRM_ADAPTER_BASE_URL: http://crm-adapter:3000
       OBITUARY_ENGINE_BASE_URL: http://obituary-intelligence-engine:8080
+      AUTH_JWT_ISSUER: lli-saas-pilot
+      AUTH_JWT_AUDIENCE: lli-saas
+      AUTH_ALLOWED_ORIGINS: https://portal.example.com
+    secretEnv:
+      AUTH_JWT_SECRET:
+        secretName: lli-saas-shared-auth
+        secretKey: AUTH_JWT_SECRET
   obituaryIntelligenceEngine:
     name: obituary-intelligence-engine
     image:
       repository: ghcr.io/nice-and-precise/lli-saas-obituary-intelligence-engine
       tag: latest
+      digest: ""
+      reference: ""
+      pullPolicy: IfNotPresent
     port: 8080
     replicas: 1
     resources:
@@ -34,6 +49,31 @@ services:
       OBITUARY_ENGINE_STATE_PATH: /var/lib/lli-saas/obituary-intelligence-engine/state.json
       OBITUARY_ENGINE_RETENTION_DAYS: "30"
       OBITUARY_HTTP_TIMEOUT_SECONDS: "10"
+      HEIR_EXTRACTION_PRIMARY_PROVIDER: gemini
+      HEIR_EXTRACTION_PRIMARY_MODEL: gemini-2.5-flash
+      HEIR_EXTRACTION_FALLBACK_PROVIDER: gemini
+      HEIR_EXTRACTION_FALLBACK_MODEL: gemini-1.5-flash
+      HEIR_EXTRACTION_FINAL_PROVIDER: anthropic
+      HEIR_EXTRACTION_FINAL_MODEL: claude-3-7-sonnet-latest
+      AUTH_JWT_ISSUER: lli-saas-pilot
+      AUTH_JWT_AUDIENCE: lli-saas
+      AUTH_ALLOWED_ORIGINS: https://portal.example.com
+    secretEnv:
+      AUTH_JWT_SECRET:
+        secretName: lli-saas-shared-auth
+        secretKey: AUTH_JWT_SECRET
+      GEMINI_API_KEY:
+        secretName: lli-saas-obituary-provider-secrets
+        secretKey: GEMINI_API_KEY
+        optional: true
+      GOOGLE_API_KEY:
+        secretName: lli-saas-obituary-provider-secrets
+        secretKey: GOOGLE_API_KEY
+        optional: true
+      ANTHROPIC_API_KEY:
+        secretName: lli-saas-obituary-provider-secrets
+        secretKey: ANTHROPIC_API_KEY
+        optional: true
     persistence:
       enabled: true
       claimName: obituary-engine-state
@@ -46,6 +86,9 @@ services:
     image:
       repository: ghcr.io/nice-and-precise/lli-saas-crm-adapter
       tag: latest
+      digest: ""
+      reference: ""
+      pullPolicy: IfNotPresent
     port: 3000
     replicas: 1
     resources:
@@ -56,10 +99,29 @@ services:
       enabled: true
       path: /ready
     env:
-      MONDAY_CLIENT_ID: change-me
-      MONDAY_CLIENT_SECRET: change-me
       MONDAY_REDIRECT_URI: http://crm-adapter:3000/auth/callback
       CRM_ADAPTER_STATE_PATH: /var/lib/lli-saas/crm-adapter/monday-state.json
+      AUTH_JWT_ISSUER: lli-saas-pilot
+      AUTH_JWT_AUDIENCE: lli-saas
+      AUTH_ALLOWED_ORIGINS: https://portal.example.com
+      OPERATOR_TENANT_ID: pilot
+      OPERATOR_PORTAL_BASE_URL: https://portal.example.com
+    secretEnv:
+      MONDAY_CLIENT_ID:
+        secretName: lli-saas-crm-adapter-secrets
+        secretKey: MONDAY_CLIENT_ID
+      MONDAY_CLIENT_SECRET:
+        secretName: lli-saas-crm-adapter-secrets
+        secretKey: MONDAY_CLIENT_SECRET
+      AUTH_JWT_SECRET:
+        secretName: lli-saas-shared-auth
+        secretKey: AUTH_JWT_SECRET
+      OPERATOR_EMAIL:
+        secretName: lli-saas-crm-adapter-secrets
+        secretKey: OPERATOR_EMAIL
+      OPERATOR_PASSWORD:
+        secretName: lli-saas-crm-adapter-secrets
+        secretKey: OPERATOR_PASSWORD
     persistence:
       enabled: true
       claimName: crm-adapter-state
@@ -72,6 +134,9 @@ services:
     image:
       repository: ghcr.io/nice-and-precise/lli-saas-user-portal
       tag: latest
+      digest: ""
+      reference: ""
+      pullPolicy: IfNotPresent
     port: 80
     replicas: 1
     resources:
@@ -91,5 +156,8 @@ schedules:
     schedule: "0 12 * * *"
     timeZone: "America/Chicago"
     endpoint: http://lead-engine:8000/run-scan
-    tenantId: pilot
+    authTokenEnv: LEAD_ENGINE_CRON_JWT
+    authTokenSecret:
+      secretName: lli-saas-lead-engine-cron
+      secretKey: LEAD_ENGINE_CRON_JWT
     requestBody: '{"owner_limit":10000,"lookback_days":7,"source_ids":[]}'

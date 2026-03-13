@@ -4,6 +4,10 @@ kind: Service
 metadata:
   name: {{ $svc.name }}
 spec:
+  type: {{ default "ClusterIP" $svc.type }}
+  {{- if $svc.loadBalancerIP }}
+  loadBalancerIP: {{ $svc.loadBalancerIP }}
+  {{- end }}
   selector:
     app: {{ $svc.name }}
   ports:

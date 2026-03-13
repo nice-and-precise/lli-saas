@@ -33,14 +33,25 @@ The gate should cover:
 
 ## Current Verified Pilot Snapshot
 
-- verification date: March 12, 2026
+- verification date: March 12, 2026 (Audit Redeploy)
 - portal: `http://portal.35.225.151.173.sslip.io`
 - `crm-adapter`: `http://crm.34.42.223.140.sslip.io`
 - `lead-engine`: `http://lead.34.57.110.0.sslip.io:8000`
 - Monday callback: `http://crm.34.42.223.140.sslip.io/auth/callback`
-- destination lead board: `lli-saas Pilot Leads` (`18403599732`)
-- final successful scan: `0754b40d-6a1e-4b49-96e7-2d966c335e19`
-- final verified Monday item: `Elaine Carter - Boone County` (`11497241942`)
+
+## Deployment Pitfalls & Common Fixes
+
+### 1. Service Visibility (LoadBalancer)
+By default, the Helm chart defaults services to `ClusterIP`. For pilot access, ensure `values.pilot.yaml` explicitly sets `type: LoadBalancer` and provides the static `loadBalancerIP` for `user-portal`, `crm-adapter`, and `lead-engine`.
+
+### 2. Slow Backend Startup (Probes)
+The `lead-engine` may take longer than 5 seconds to pass its initial `/ready` check during startup. If pods enter `CrashLoopBackOff`, verify that `livenessProbe` and `readinessProbe` have sufficient `initialDelaySeconds` (e.g., 10-15s) and `timeoutSeconds` (e.g., 5s).
+
+### 3. CRLF Line Endings (.env)
+When deploying from Windows or using WSL, ensure `infra/.env` uses **LF** line endings. CRLF line endings will cause environment variables to contain a trailing `\r`, which can break URL resolution (e.g., `http://portal.35.225.151.173.sslip.io\r`) and CORS validation.
+
+### 4. User Portal Build Context
+The `user-portal` Docker image requires `nginx.conf` and `docker-entrypoint.sh`. Always build from the `services/user-portal/` directory to ensure these files are correctly included in the image.
 
 ## Pilot Rehearsal
 

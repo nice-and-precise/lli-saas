@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+export PATH=$(pwd)/scripts:$PATH
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART_PATH="${ROOT_DIR}/infra/charts/lli-saas"
 RELEASE_NAME="lli-saas"

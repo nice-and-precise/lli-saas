@@ -66,10 +66,14 @@ spec:
             httpGet:
               path: {{ $svc.probes.path }}
               port: {{ $svc.port }}
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
           livenessProbe:
             httpGet:
               path: {{ $svc.probes.path }}
               port: {{ $svc.port }}
+            initialDelaySeconds: 15
+            timeoutSeconds: 5
 {{- end }}
 {{- if or (and $svc.persistence $svc.persistence.enabled) (eq $svc.name "obituary-intelligence-engine") }}
       volumes:

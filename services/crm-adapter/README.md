@@ -6,6 +6,8 @@ Express Monday adapter for OAuth, source-owner fetch, destination-board mapping,
 
 - Install: `npm install`
 - Run: `npm run dev`
+- Lint: `npm run lint`
+- Format check: `npm run format:check`
 - Test: `npm test`
 - Docker build: `docker build -f services/crm-adapter/Dockerfile -t lli-saas/crm-adapter:pilot .`
 
@@ -16,21 +18,37 @@ Express Monday adapter for OAuth, source-owner fetch, destination-board mapping,
 - `MONDAY_REDIRECT_URI`
 - `MONDAY_API_BASE_URL` (optional, defaults to `https://api.monday.com/v2`)
 - `CRM_ADAPTER_STATE_PATH` (optional, defaults to `/var/lib/lli-saas/crm-adapter/monday-state.json`)
+- `AUTH_JWT_SECRET`
+- `AUTH_JWT_ISSUER` (optional, defaults to `lli-saas-pilot`)
+- `AUTH_JWT_AUDIENCE` (optional, defaults to `lli-saas`)
+- `AUTH_JWT_TTL_SECONDS` (optional, defaults to `3600`)
+- `AUTH_ALLOWED_ORIGINS` (comma-separated portal origin allowlist)
+- `OPERATOR_EMAIL`
+- `OPERATOR_PASSWORD`
+- `OPERATOR_TENANT_ID` (optional, defaults to `pilot`)
+- `OPERATOR_PORTAL_BASE_URL` (optional; if set, Monday callback redirects the operator back to `/dashboard`)
 - `PORT` (optional, defaults to `3000`)
 
-The adapter persists tenant-aware Monday OAuth, selected destination board, board mapping, scan runs, and delivery state in the file at `CRM_ADAPTER_STATE_PATH`. It does not persist the source owner corpus. In Kubernetes, pilot durability requires the mounted storage path from `infra/`.
+The adapter persists tenant-aware Monday OAuth, selected destination board, board mapping, scan runs, delivery history, and an idempotency index in the file at `CRM_ADAPTER_STATE_PATH`. It does not persist the source owner corpus. In Kubernetes, pilot durability requires the mounted storage path from `infra/`.
+
+State writes now use a same-directory temp file, `fsync`, and `rename` sequence behind a lock file. If the state file is malformed, the adapter returns an explicit `state_corruption` error and copies the bad document to `*.corrupt-<timestamp>` for operator recovery instead of silently normalizing it.
 
 ## Monday assumptions
 
 - Source owner board name: `Clients`
 - Destination lead board: the currently selected board in adapter state
 - Default item-name strategy: `deceased_name_county`
-- Duplicate identity: obituary URL first, then `{deceased_name, death_date, owner_id}` fallback
+- Duplicate identity: durable `idempotency_key` derived from canonical lead identity
+- Secondary duplicate checks: persisted delivery history/index, mapped `idempotency_key` column when configured, obituary URL, then item name fallback
+- Recommended board mapping: add a text column for `idempotency_key` so duplicate protection survives adapter restarts and local state loss better than item-name checks alone
 
 ## Routes
 
+- `POST /session/login` exchanges the env-configured operator credentials for a signed JWT bearer token.
+- `GET /session/me` returns the verified JWT claims for the current operator or service caller.
 - `GET /auth/login` redirects to Monday OAuth.
-- `GET /auth/callback?code=...` exchanges the OAuth code and persists token state.
+- `GET /auth/login-url` returns the Monday authorization URL for an authenticated operator session.
+- `GET /auth/callback?code=...&state=...` is the only non-health public callback route; it validates the signed OAuth state minted by `/auth/login` or `/auth/login-url`, then persists token state for the verified tenant.
 - `GET /boards` discovers boards using the persisted OAuth token.
 - `GET /owners?limit=...` fetches owner records from the Monday `Clients` board and normalizes them into canonical `OwnerRecord[]`.
 - `POST /boards/select` with `{ "board_id": "..." }` persists the selected destination board metadata.
@@ -39,6 +57,21 @@ The adapter persists tenant-aware Monday OAuth, selected destination board, boar
 - `GET /deliveries` returns persisted delivery attempts and scan-run status for the active tenant.
 - `GET /status` returns the current board, mapping, delivery, and scan snapshot for the active tenant.
 - `POST /leads` validates the canonical lead contract, checks for duplicates on the selected board, and records created, skipped, or failed delivery outcomes.
+
+## Logging
+
+- The service emits one JSON log line per event.
+- Delivery and scan-related events include `tenant_id` and `scan_id` whenever those values are available.
+- Important events include owner fetch start/completion/failure, OAuth callback failures, duplicate skips, delivery attempts, Monday retry/failure events, and state load/write/corruption events.
+
+## Operator Recovery
+
+If the adapter reports `state_corruption`:
+
+1. Inspect the copied `*.corrupt-*` file next to `CRM_ADAPTER_STATE_PATH`.
+2. Restore the main state file from backup or replace it with a valid JSON document.
+3. If a board-level `idempotency_key` column is mapped, replayed deliveries will still be skipped from Monday even after local state loss.
+4. Without a mapped `idempotency_key` column, duplicate protection still falls back to persisted history, obituary URL, and item-name checks, but PVC loss remains a residual limitation.
 
 ## Mapping Scope
 
@@ -53,9 +86,12 @@ The adapter can map the richer obituary lead fields into Monday column IDs, incl
 - out-of-state, executor, and unexpected-death signals
 - tags and scan metadata
 
-Optional request header:
+Security notes:
 
-- `x-tenant-id` selects a tenant-scoped state bucket. Defaults to `pilot`.
+- All non-health routes require a valid JWT bearer token.
+- `tenant_id` is derived from verified JWT claims, never from request headers.
+- Spoofed `x-tenant-id` values are rejected.
+- CORS is restricted to the configured `AUTH_ALLOWED_ORIGINS` allowlist.
 
 Example lead payload:
 

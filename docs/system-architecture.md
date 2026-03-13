@@ -69,7 +69,7 @@ flowchart TB
 - `user-portal`
   - operator-facing UI for board selection, mapping edits, scan launch, and visibility
 - `crm-adapter`
-  - Monday-only adapter for OAuth, board discovery, owner normalization, delivery mapping, duplicate handling, and persisted delivery state
+  - Monday-only adapter for operator session login, Monday OAuth, board discovery, owner normalization, delivery mapping, duplicate handling, and persisted delivery state
 - `lead-engine`
   - the single orchestration owner for `run_scan()`
 - `obituary-intelligence-engine`
@@ -140,3 +140,4 @@ flowchart TB
 - CRM-specific mapping logic stays in `crm-adapter`.
 - Operator-specific workflow stays in `user-portal`.
 - Future CRM support should require new adapter mappings, not obituary-core rewrites.
+- Only `/health` and `/ready` are public service routes. All other service traffic uses signed JWT bearer auth with `tenant_id` derived from verified claims, not request headers.

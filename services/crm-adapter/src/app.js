@@ -24,9 +24,9 @@ const {
   TokenStoreError,
 } = require("./tokenStore");
 
-const SOURCE_OWNER_BOARD_NAME = "Clients";
-const MAX_DELIVERY_HISTORY = 200;
-const MAX_SCAN_RUN_HISTORY = 100;
+const SOURCE_OWNER_BOARD_NAME = process.env.SOURCE_OWNER_BOARD_NAME || "Clients";
+const MAX_DELIVERY_HISTORY = parseInt(process.env.MAX_DELIVERY_HISTORY, 10) || 200;
+const MAX_SCAN_RUN_HISTORY = parseInt(process.env.MAX_SCAN_RUN_HISTORY, 10) || 100;
 
 function canonicalizeUrl(value) {
   const rawValue = String(value ?? "").trim();

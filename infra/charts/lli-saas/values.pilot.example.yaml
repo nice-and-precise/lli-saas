@@ -1,3 +1,5 @@
+validatePlaceholders: true
+
 services:
   leadEngine:
     image:

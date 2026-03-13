@@ -39,7 +39,8 @@ def _obituary_engine_ready() -> tuple[bool, str | None]:
         return False, "missing_configuration"
 
     try:
-        response = httpx.get(f"{base_url}/health", timeout=2.0)
+        _timeout = float(os.getenv("READINESS_PROBE_TIMEOUT", "5.0"))
+        response = httpx.get(f"{base_url}/health", timeout=_timeout)
     except httpx.HTTPError:
         return False, "unreachable"
 

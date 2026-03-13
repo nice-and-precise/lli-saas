@@ -1,4 +1,5 @@
 imagePullSecrets: []
+validatePlaceholders: false
 
 services:
   leadEngine:
@@ -15,6 +16,9 @@ services:
       requests:
         cpu: 250m
         memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
     probes:
       enabled: true
       path: /ready
@@ -42,6 +46,9 @@ services:
       requests:
         cpu: 250m
         memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
     probes:
       enabled: true
       path: /ready
@@ -95,6 +102,9 @@ services:
       requests:
         cpu: 100m
         memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
     probes:
       enabled: true
       path: /ready
@@ -143,6 +153,9 @@ services:
       requests:
         cpu: 100m
         memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
     probes:
       enabled: false
       path: /

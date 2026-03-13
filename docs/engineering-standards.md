@@ -67,7 +67,7 @@ This document defines the default engineering standards for `lli-saas`. Use it w
 ## Infra And Deployment Standards
 
 - Helm under `infra/charts/lli-saas` is the deployment source of truth for the pilot stack.
-- Raw manifests under `infra/k8s` are reference snapshots for debugging and should not diverge materially from the chart.
+- Raw manifests under `infra/k8s-reference` are non-authoritative reference snapshots and must not be applied directly.
 - Secrets must be injected through deployment-time secret management, not committed literal values.
 - Health probes should separate process liveness from dependency readiness.
 

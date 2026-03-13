@@ -5,12 +5,12 @@
 
 ## Context
 
-`lli-saas` currently contains both Helm templates under `infra/charts/lli-saas` and raw Kubernetes manifests under `infra/k8s`. Keeping both equally authoritative creates drift risk, especially when pilot infrastructure changes quickly.
+`lli-saas` currently contains both Helm templates under `infra/charts/lli-saas` and raw Kubernetes manifests under `infra/k8s-reference`. Keeping both equally authoritative creates drift risk, especially when pilot infrastructure changes quickly.
 
 ## Decision
 
 - Treat `infra/charts/lli-saas` as the deployable source of truth for the pilot stack.
-- Keep `infra/k8s` as reference manifests only.
+- Keep `infra/k8s-reference` as reference manifests only.
 - Validate Helm in CI for release-facing changes.
 - Keep raw manifests readable and correct enough for debugging, but do not rely on them as the primary deployment contract.
 

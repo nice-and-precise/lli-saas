@@ -162,6 +162,14 @@ run_helm() {
 
 run_kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | run_kubectl apply -f -
 
+if [[ -n "${GHCR_TOKEN:-}" && -n "${GHCR_USER:-}" ]]; then
+  run_kubectl -n "${NAMESPACE}" create secret docker-registry ghcr-pull \
+    --docker-server=ghcr.io \
+    --docker-username="${GHCR_USER}" \
+    --docker-password="${GHCR_TOKEN}" \
+    --dry-run=client -o yaml | run_kubectl apply -f -
+fi
+
 run_kubectl -n "${NAMESPACE}" create secret generic lli-saas-shared-auth \
   --from-literal=AUTH_JWT_SECRET="${AUTH_JWT_SECRET}" \
   --dry-run=client -o yaml | run_kubectl apply -f -
@@ -197,6 +205,7 @@ helm_command=(
   --set-string services.crmAdapter.env.OPERATOR_PORTAL_BASE_URL="${OPERATOR_PORTAL_BASE_URL}"
   --set-string services.userPortal.env.CRM_ADAPTER_BASE_URL="${CRM_ADAPTER_PUBLIC_URL}"
   --set-string services.userPortal.env.LEAD_ENGINE_BASE_URL="${LEAD_ENGINE_PUBLIC_URL}"
+  --set validatePlaceholders=true
 )
 
 if [[ "${DRY_RUN}" == "1" ]]; then

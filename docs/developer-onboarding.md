@@ -2,7 +2,7 @@
 
 ## Start With
 
-Read [docs/system-architecture.md](/Users/jordan/Desktop/LLI_v1/docs/system-architecture.md) first.
+Read [docs/system-architecture.md](../docs/system-architecture.md) first.
 
 The key constraints are:
 

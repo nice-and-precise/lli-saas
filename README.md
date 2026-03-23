@@ -10,7 +10,7 @@ The operating rule is simple:
 - `lli-saas` delivers scored leads back into CRM
 - `lli-saas` does not become a land database platform
 
-Start with [docs/README.md](/Users/jordan/Desktop/LLI_v1/docs/README.md). The detailed architecture source of truth is [docs/system-architecture.md](/Users/jordan/Desktop/LLI_v1/docs/system-architecture.md).
+Start with [docs/README.md](docs/README.md). The detailed architecture source of truth is [docs/system-architecture.md](docs/system-architecture.md).
 
 ## Current Stack
 
@@ -87,7 +87,7 @@ flowchart TB
 - `ScanResult`
   - orchestration result, delivery summary, canonical leads, and structured errors
 
-The schema artifacts live in [shared/contracts](/Users/jordan/Desktop/LLI_v1/shared/contracts).
+The schema artifacts live in [shared/contracts](shared/contracts).
 
 ## What Is Persisted
 
@@ -104,7 +104,7 @@ It does persist:
 ## Quick Start
 
 1. Install Node 20+, Python 3.11+, Docker, and kubectl.
-2. Follow [docs/developer-onboarding.md](/Users/jordan/Desktop/LLI_v1/docs/developer-onboarding.md).
+2. Follow [docs/developer-onboarding.md](docs/developer-onboarding.md).
 3. Run:
    - `cd services/lead-engine && poetry install && poetry run uvicorn src.app:app --reload --host 0.0.0.0 --port 8000`
    - `cd services/obituary-intelligence-engine && poetry install && poetry run uvicorn src.app:app --reload --host 0.0.0.0 --port 8080`
@@ -115,18 +115,18 @@ It does persist:
 
 ## Repo Map
 
-- [docs/README.md](/Users/jordan/Desktop/LLI_v1/docs/README.md) — documentation index
-- [docs/system-architecture.md](/Users/jordan/Desktop/LLI_v1/docs/system-architecture.md) — architecture source of truth
-- [docs/documentation-standards.md](/Users/jordan/Desktop/LLI_v1/docs/documentation-standards.md) — documentation maintenance rules
-- [docs/developer-onboarding.md](/Users/jordan/Desktop/LLI_v1/docs/developer-onboarding.md) — local setup and service startup
-- [docs/pilot-release-checklist.md](/Users/jordan/Desktop/LLI_v1/docs/pilot-release-checklist.md) — pre-pilot gate
-- [docs/pilot-runbook-david-whitaker.md](/Users/jordan/Desktop/LLI_v1/docs/pilot-runbook-david-whitaker.md) — operator runbook
-- [services/lead-engine/README.md](/Users/jordan/Desktop/LLI_v1/services/lead-engine/README.md) — orchestrator service doc
-- [services/obituary-intelligence-engine/README.md](/Users/jordan/Desktop/LLI_v1/services/obituary-intelligence-engine/README.md) — obituary service doc
-- [services/crm-adapter/README.md](/Users/jordan/Desktop/LLI_v1/services/crm-adapter/README.md) — Monday adapter doc
-- [services/user-portal/README.md](/Users/jordan/Desktop/LLI_v1/services/user-portal/README.md) — operator UI doc
-- [infra/README.md](/Users/jordan/Desktop/LLI_v1/infra/README.md) — deployment assets
+- [docs/README.md](docs/README.md) — documentation index
+- [docs/system-architecture.md](docs/system-architecture.md) — architecture source of truth
+- [docs/documentation-standards.md](docs/documentation-standards.md) — documentation maintenance rules
+- [docs/developer-onboarding.md](docs/developer-onboarding.md) — local setup and service startup
+- [docs/pilot-release-checklist.md](docs/pilot-release-checklist.md) — pre-pilot gate
+- [docs/pilot-runbook-david-whitaker.md](docs/pilot-runbook-david-whitaker.md) — operator runbook
+- [services/lead-engine/README.md](services/lead-engine/README.md) — orchestrator service doc
+- [services/obituary-intelligence-engine/README.md](services/obituary-intelligence-engine/README.md) — obituary service doc
+- [services/crm-adapter/README.md](services/crm-adapter/README.md) — Monday adapter doc
+- [services/user-portal/README.md](services/user-portal/README.md) — operator UI doc
+- [infra/README.md](infra/README.md) — deployment assets
 
 ## Legacy Material
 
-Older Reaper-era documents are archived under [docs/archive/legacy/README.md](/Users/jordan/Desktop/LLI_v1/docs/archive/legacy/README.md). They are historical reference only and must not drive current implementation or release decisions.
+Older Reaper-era documents are archived under [docs/archive/legacy/README.md](docs/archive/legacy/README.md). They are historical reference only and must not drive current implementation or release decisions.

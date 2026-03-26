@@ -82,6 +82,8 @@ export default function DashboardPage() {
   const [boards, setBoards] = useState([]);
   const [selectedBoardId, setSelectedBoardId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM);
+  const [validation, setValidation] = useState(null);
+  const [validatingScan, setValidatingScan] = useState(false);
   const [loading, setLoading] = useState(true);
   const [runningScan, setRunningScan] = useState(false);
   const [savingBoard, setSavingBoard] = useState(false);
@@ -95,10 +97,11 @@ export default function DashboardPage() {
 
     try {
       const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
-      const [statusPayload, mappingResult, boardsResult] = await Promise.allSettled([
+      const [statusPayload, mappingResult, boardsResult, validationResult] = await Promise.allSettled([
         fetchJson(crmAdapterBaseUrl, "/status"),
         fetchJson(crmAdapterBaseUrl, "/mapping"),
         fetchJson(crmAdapterBaseUrl, "/boards"),
+        fetchJson(crmAdapterBaseUrl, "/validation/pre-scan"),
       ]);
 
       if (statusPayload.status !== "fulfilled") {
@@ -120,6 +123,25 @@ export default function DashboardPage() {
           setMappingDraft(buildInitialMappingDraft(null));
         });
       }
+
+      const validationPayload = validationResult.status === "fulfilled"
+        ? validationResult.value
+        : validationResult.reason?.message
+          ? {
+              ready: false,
+              status: "action_required",
+              issues: [{
+                code: "validation_request_failed",
+                severity: "error",
+                message: validationResult.reason.message,
+                guidance: "Resolve the validation issue before starting a scan.",
+              }],
+            }
+          : null;
+
+      startTransition(() => {
+        setValidation(validationPayload);
+      });
 
       if (boardsResult.status === "fulfilled") {
         startTransition(() => {
@@ -145,10 +167,22 @@ export default function DashboardPage() {
 
   async function handleRunScan(event) {
     event.preventDefault();
-    setRunningScan(true);
+    setValidatingScan(true);
+    setRunningScan(false);
     setError("");
 
     try {
+      const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
+      const validationResult = await fetchJson(crmAdapterBaseUrl, "/validation/pre-scan");
+      startTransition(() => {
+        setValidation(validationResult);
+      });
+
+      if (!validationResult.ready) {
+        throw new Error("Resolve the Monday validation issues before starting a scan.");
+      }
+
+      setRunningScan(true);
       const leadEngineBaseUrl = getRequiredServiceBaseUrl("leadEngineBaseUrl");
       const result = await fetchJson(leadEngineBaseUrl, "/run-scan", {
         method: "POST",
@@ -167,6 +201,7 @@ export default function DashboardPage() {
     } catch (requestError) {
       setError(requestError.message);
     } finally {
+      setValidatingScan(false);
       setRunningScan(false);
     }
   }
@@ -221,6 +256,14 @@ export default function DashboardPage() {
     }
   }
 
+  const validationIssues = validation?.issues ?? [];
+  const tokenValidation = validation?.token_validation;
+  const boardValidation = validation?.board_validation;
+  const canRunScan = validation?.ready !== false;
+  const validationHeadline = validation?.ready
+    ? "Monday setup is ready for a scan."
+    : "Fix Monday setup issues before starting a scan.";
+
   const selectedBoard = status?.board?.name ?? "No destination board selected";
   const deliveryCount = status?.deliveries?.length ?? 0;
   const latestDelivery = status?.latest_delivery;
@@ -252,6 +295,57 @@ export default function DashboardPage() {
             <strong>{latestDelivery?.status ?? "awaiting first scan"}</strong>
           </div>
         </div>
+      </section>
+
+      <section className={`panel validation-panel ${validation?.ready ? "validation-ready" : "validation-blocked"}`}>
+        <div className="validation-header">
+          <div>
+            <p className="eyebrow">Pre-scan validator</p>
+            <h2>{validationHeadline}</h2>
+            <p className="subtle">
+              Checks the selected Monday board, required field mappings, and OAuth readiness before scan submission.
+            </p>
+          </div>
+          <div className={`status ${validation?.ready ? "ready" : "offline"}`}>
+            {validation?.ready ? "Ready" : "Action required"}
+          </div>
+        </div>
+
+        <div className="grid validation-grid">
+          <div className="validation-card">
+            <h3>OAuth token</h3>
+            <p><strong>Status:</strong> {tokenValidation?.status ?? "unknown"}</p>
+            <p>{tokenValidation?.message ?? "No validation result yet."}</p>
+            {tokenValidation?.guidance ? <p className="subtle">{tokenValidation.guidance}</p> : null}
+          </div>
+          <div className="validation-card">
+            <h3>Board requirements</h3>
+            <p><strong>Board:</strong> {validation?.selected_board?.name ?? "No board selected"}</p>
+            <p>Required fields: Owner Name, Obituary URL, Tier</p>
+            <ul className="validation-field-list">
+              {(boardValidation?.field_results ?? []).map((result) => (
+                <li key={result.field}>
+                  <strong>{result.label}</strong>: {result.message}
+                  {result.guidance ? <span> {result.guidance}</span> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {validationIssues.length > 0 ? (
+          <div>
+            <h3>What needs attention</h3>
+            <ul className="activity-list">
+              {validationIssues.map((issue, index) => (
+                <li key={`${issue.code}-${index}`}>
+                  <strong>{issue.message}</strong>
+                  <span>{issue.guidance}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       {error ? (
@@ -318,7 +412,7 @@ export default function DashboardPage() {
                 onChange={(event) => setForm((current) => ({ ...current, source_ids: event.target.value }))}
               />
             </label>
-            <button type="submit" disabled={runningScan}>
+            <button type="submit" disabled={runningScan || validatingScan || !canRunScan}>
               {runningScan ? "Running scan..." : "Run obituary scan"}
             </button>
           </form>

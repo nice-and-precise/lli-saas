@@ -1,6 +1,7 @@
 const axios = require("axios");
 const {
   CREATE_ITEM_MUTATION,
+  GET_ME_QUERY,
   LIST_BOARDS_QUERY,
   LIST_BOARD_ITEMS_PAGE_QUERY,
   NEXT_BOARD_ITEMS_PAGE_QUERY,
@@ -112,6 +113,16 @@ class MondayClient {
 
     return response.data?.boards ?? [];
   }
+
+  async getMe(token) {
+    const response = await this.executeGraphQL({
+      query: GET_ME_QUERY,
+      token,
+    });
+
+    return response.data?.me ?? null;
+  }
+
 
   async listBoardItemsPage({ token, boardId, limit = 500 }) {
     const response = await this.executeGraphQL({

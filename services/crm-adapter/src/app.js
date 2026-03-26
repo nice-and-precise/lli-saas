@@ -6,6 +6,11 @@ const {
 } = require("./leadContract");
 const { MondayClient } = require("./mondayClient");
 const {
+  buildBoardValidation,
+  buildTokenValidation,
+  summarizeValidation,
+} = require("./mondayValidation");
+const {
   getOwnerRecordSchemaPath,
   normalizeMondayOwnerRecords,
 } = require("./ownerRecord");
@@ -228,6 +233,90 @@ function buildMondayRequestErrorResponse(error, fallbackMessage) {
   return {
     error: fallbackMessage,
     details: error.message,
+  };
+}
+
+async function validateMondayToken({ mondayClient, token, mondayConfig }) {
+  const oauthConfigured = Object.values(mondayConfig).every(Boolean);
+
+  if (!oauthConfigured || !token) {
+    return buildTokenValidation({
+      tokenPresent: Boolean(token),
+      oauthConfigured,
+      tokenCheckResult: null,
+    });
+  }
+
+  try {
+    const me = await mondayClient.getMe(token);
+    return buildTokenValidation({
+      tokenPresent: true,
+      oauthConfigured: true,
+      tokenCheckResult: {
+        ok: true,
+        status: "valid",
+        message: me?.name
+          ? `Monday OAuth token is valid for ${me.name}.`
+          : "Monday OAuth token is valid.",
+        details: me ? { account: me } : {},
+      },
+    });
+  } catch (error) {
+    return buildTokenValidation({
+      tokenPresent: true,
+      oauthConfigured: true,
+      tokenCheckResult: {
+        ok: false,
+        status: /401|403|unauthorized|forbidden/i.test(error.message) ? "invalid_token" : "token_check_failed",
+        code: /401|403|unauthorized|forbidden/i.test(error.message)
+          ? "oauth_token_invalid"
+          : "oauth_token_check_failed",
+        message: /401|403|unauthorized|forbidden/i.test(error.message)
+          ? "Monday rejected the stored OAuth token."
+          : "Unable to verify the Monday OAuth token right now.",
+        guidance: /401|403|unauthorized|forbidden/i.test(error.message)
+          ? "Reconnect Monday before starting another scan."
+          : "Try validation again. If this keeps failing, reconnect Monday and verify Monday API access.",
+        details: { error: error.message },
+      },
+    });
+  }
+}
+
+async function buildPreScanValidation({ tokenStore, mondayClient, mondayConfig, tenantId }) {
+  const state = await getPersistedState(tokenStore, tenantId);
+  const token = state.tokens?.monday_access_token ?? null;
+  const tokenValidation = await validateMondayToken({
+    mondayClient,
+    token,
+    mondayConfig,
+  });
+
+  const boardValidation = state.board?.id
+    ? buildBoardValidation({
+        board: state.board,
+        mapping: state.board_mapping ?? createDefaultMapping(),
+      })
+    : {
+        ok: false,
+        required_fields: ["owner_name", "obituary_url", "tier"],
+        field_results: [],
+        issues: [],
+      };
+
+  const summary = summarizeValidation({
+    tokenValidation,
+    boardValidation,
+    boardSelected: Boolean(state.board?.id),
+  });
+
+  return {
+    tenant_id: tenantId,
+    selected_board: state.board ?? null,
+    mapping: state.board_mapping ?? createDefaultMapping(),
+    token_validation: tokenValidation,
+    board_validation: boardValidation,
+    ...summary,
   };
 }
 
@@ -628,6 +717,18 @@ function createApp(options = {}) {
       board_id: state.board.id,
       mapping: state.board_mapping ?? createDefaultMapping(),
     });
+  });
+
+  app.get("/validation/pre-scan", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const validation = await buildPreScanValidation({
+      tokenStore,
+      mondayClient,
+      mondayConfig,
+      tenantId,
+    });
+
+    return res.status(validation.ready ? 200 : 409).json(validation);
   });
 
   app.put("/mapping", async (req, res) => {

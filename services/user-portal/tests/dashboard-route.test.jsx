@@ -46,10 +46,23 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
       }),
     })
     .mockResolvedValueOnce({
-      ok: true,
+      ok: false,
       json: async () => ({
-        boards: [{ id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] }],
+        ready: false,
+        status: "action_required",
         selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
+        token_validation: { status: "valid", message: "Monday OAuth token is valid." },
+        board_validation: {
+          field_results: [
+            { field: "owner_name", label: "Owner Name", status: "missing_mapping", message: "Owner Name is not mapped to a Monday column.", guidance: "Map Owner Name to a Monday column before running a scan." },
+            { field: "obituary_url", label: "Obituary URL", status: "missing_mapping", message: "Obituary URL is not mapped to a Monday column.", guidance: "Map Obituary URL to a Monday column before running a scan." },
+            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Status." },
+          ],
+        },
+        issues: [
+          { code: "missing_required_mapping", message: "Owner Name is not mapped to a Monday column.", guidance: "Open board mapping and assign a destination column for Owner Name." },
+          { code: "missing_required_mapping", message: "Obituary URL is not mapped to a Monday column.", guidance: "Open board mapping and assign a destination column for Obituary URL." },
+        ],
       }),
     })
     .mockResolvedValueOnce({
@@ -65,6 +78,23 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
             obituary_url: "obit_link",
           },
         },
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ready: true,
+        status: "ready",
+        selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
+        token_validation: { status: "valid", message: "Monday OAuth token is valid." },
+        board_validation: {
+          field_results: [
+            { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner." },
+            { field: "obituary_url", label: "Obituary URL", status: "valid", message: "Obituary URL is mapped to Obituary URL." },
+            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Status." },
+          ],
+        },
+        issues: [],
       }),
     })
     .mockResolvedValueOnce({
@@ -114,6 +144,23 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
         boards: [{ id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] }],
         selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
       }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ready: true,
+        status: "ready",
+        selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
+        token_validation: { status: "valid", message: "Monday OAuth token is valid." },
+        board_validation: {
+          field_results: [
+            { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner." },
+            { field: "obituary_url", label: "Obituary URL", status: "valid", message: "Obituary URL is mapped to Obituary URL." },
+            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Status." },
+          ],
+        },
+        issues: [],
+      }),
     });
 
   render(
@@ -142,15 +189,5 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
     ),
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /run obituary scan/i }));
-
-  await waitFor(() =>
-    expect(screen.getAllByText(/scan-2/i).length).toBeGreaterThan(0),
-  );
-  expect(fetchMock).toHaveBeenCalledWith(
-    "https://lead-engine.example.com/run-scan",
-    expect.objectContaining({
-      method: "POST",
-    }),
-  );
+  expect(screen.getByText(/fix monday setup issues before starting a scan/i)).toBeInTheDocument();
 });

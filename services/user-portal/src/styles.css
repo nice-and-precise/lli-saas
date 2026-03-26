@@ -220,3 +220,42 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+
+.validation-panel {
+  border-color: rgba(13, 92, 99, 0.16);
+}
+
+.validation-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.validation-grid {
+  margin-top: 18px;
+}
+
+.validation-card {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(246, 243, 237, 0.8);
+  border: 1px solid rgba(19, 33, 43, 0.08);
+}
+
+.validation-field-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.validation-blocked {
+  border-color: rgba(166, 64, 50, 0.18);
+  background: rgba(255, 248, 246, 0.9);
+}
+
+.validation-ready {
+  background: rgba(243, 251, 247, 0.9);
+}

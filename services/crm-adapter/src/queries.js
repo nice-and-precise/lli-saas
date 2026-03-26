@@ -17,11 +17,22 @@ const LIST_BOARDS_QUERY = `
     boards {
       id
       name
+      state
       columns {
         id
         title
         type
       }
+    }
+  }
+`;
+
+const GET_ME_QUERY = `
+  query GetMe {
+    me {
+      id
+      name
+      email
     }
   }
 `;
@@ -61,6 +72,7 @@ const NEXT_BOARD_ITEMS_PAGE_QUERY = `
 
 module.exports = {
   CREATE_ITEM_MUTATION,
+  GET_ME_QUERY,
   LIST_BOARDS_QUERY,
   LIST_BOARD_ITEMS_PAGE_QUERY,
   NEXT_BOARD_ITEMS_PAGE_QUERY,

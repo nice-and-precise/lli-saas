@@ -70,10 +70,25 @@ const NEXT_BOARD_ITEMS_PAGE_QUERY = `
   }
 `;
 
+const GET_BOARD_QUERY = `
+  query GetBoard($boardId: ID!) {
+    boards(ids: [$boardId]) {
+      id
+      name
+      columns {
+        id
+        title
+        type
+      }
+    }
+  }
+`;
+
 module.exports = {
   CREATE_ITEM_MUTATION,
   GET_ME_QUERY,
   LIST_BOARDS_QUERY,
   LIST_BOARD_ITEMS_PAGE_QUERY,
   NEXT_BOARD_ITEMS_PAGE_QUERY,
+  GET_BOARD_QUERY,
 };

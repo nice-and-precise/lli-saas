@@ -89,6 +89,7 @@ export default function DashboardPage() {
   const [savingBoard, setSavingBoard] = useState(false);
   const [savingMapping, setSavingMapping] = useState(false);
   const [error, setError] = useState("");
+  const [validationError, setValidationError] = useState(null);
   const [lastRunSummary, setLastRunSummary] = useState(null);
 
   async function refreshDashboard() {
@@ -214,13 +215,22 @@ export default function DashboardPage() {
 
     setSavingBoard(true);
     setError("");
+    setValidationError(null);
+
     try {
       const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
       await fetchJson(crmAdapterBaseUrl, "/boards/select", {
         method: "POST",
         body: JSON.stringify({ board_id: selectedBoardId }),
       });
-      await refreshDashboard();
+
+      const validation = await fetchJson(crmAdapterBaseUrl, "/boards/validate");
+
+      if (!validation.valid) {
+        setValidationError(validation.missing_columns);
+      } else {
+        await refreshDashboard();
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -453,6 +463,17 @@ export default function DashboardPage() {
               {savingBoard ? "Saving board..." : "Save board"}
             </button>
           </form>
+          {validationError && (
+            <div className="alert-panel">
+              <h3>Board validation failed</h3>
+              <p>The selected board is missing the following required columns:</p>
+              <ul>
+                {validationError.map((column) => (
+                  <li key={column}>{column}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </article>
 
         <article className="panel mapping-editor-card">

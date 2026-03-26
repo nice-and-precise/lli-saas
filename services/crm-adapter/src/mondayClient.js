@@ -5,6 +5,7 @@ const {
   LIST_BOARDS_QUERY,
   LIST_BOARD_ITEMS_PAGE_QUERY,
   NEXT_BOARD_ITEMS_PAGE_QUERY,
+  GET_BOARD_QUERY,
 } = require("./queries");
 
 function wait(ms, sleep = setTimeout) {
@@ -193,6 +194,18 @@ class MondayClient {
     });
 
     return response.data?.create_item ?? null;
+  }
+
+  async getBoard({ token, boardId }) {
+    const response = await this.executeGraphQL({
+      query: GET_BOARD_QUERY,
+      variables: {
+        boardId,
+      },
+      token,
+    });
+
+    return response.data?.boards?.[0] ?? null;
   }
 }
 

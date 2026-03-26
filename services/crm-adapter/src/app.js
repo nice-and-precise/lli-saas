@@ -704,6 +704,52 @@ function createApp(options = {}) {
     });
   });
 
+  app.get("/boards/validate", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const state = await getPersistedState(tokenStore, tenantId);
+    const token = state.tokens?.monday_access_token ?? null;
+
+    if (!token) {
+      return res.status(409).json({ error: "Monday OAuth token not configured" });
+    }
+
+    if (!state.board?.id) {
+      return res.status(409).json({ error: "Monday board not selected" });
+    }
+
+    let board;
+    try {
+      board = await mondayClient.getBoard({
+        token,
+        boardId: state.board.id,
+      });
+    } catch (error) {
+      return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to query Monday board"));
+    }
+
+    if (!board) {
+      return res.status(404).json({ error: "Board not found" });
+    }
+
+    const requiredColumns = ["Owner Name", "Obituary URL", "Tier"];
+    const missingColumns = requiredColumns.filter(
+      (requiredColumn) => !board.columns.some((boardColumn) => boardColumn.title === requiredColumn)
+    );
+
+    if (missingColumns.length > 0) {
+      return res.status(400).json({
+        error: "Board is missing required columns",
+        missing_columns: missingColumns,
+      });
+    }
+
+    return res.json({
+      valid: true,
+      board_id: board.id,
+      board_name: board.name,
+    });
+  });
+
   app.get("/mapping", async (req, res) => {
     const tenantId = getTenantId(req);
     const state = await getPersistedState(tokenStore, tenantId);

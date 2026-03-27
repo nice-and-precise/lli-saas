@@ -96,12 +96,14 @@ describe("crm-adapter routes", () => {
     const mondayClient = {
       exchangeCodeForToken: vi.fn(async () => ({
         access_token: "token-123",
+        refresh_token: "refresh-123",
         account_id: "acct-1",
       })),
       getAuthorizationUrl: vi.fn(),
     };
     const tokenStore = {
       save: vi.fn(async () => {}),
+      saveState: vi.fn(async () => {}),
     };
     const app = createApp({ mondayClient, tokenStore });
 
@@ -114,6 +116,14 @@ describe("crm-adapter routes", () => {
     });
     expect(mondayClient.exchangeCodeForToken).toHaveBeenCalledWith("abc123");
     expect(tokenStore.save).toHaveBeenCalledWith("monday_access_token", "token-123");
+    expect(tokenStore.save).toHaveBeenCalledWith("monday_refresh_token", "refresh-123");
+    expect(tokenStore.saveState).toHaveBeenCalledWith({
+      tokens: {
+        monday_access_token: "token-123",
+        monday_refresh_token: "refresh-123",
+      },
+      account_id: "acct-1",
+    });
   });
 
   it("lists boards using the persisted OAuth token", async () => {

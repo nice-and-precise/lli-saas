@@ -37,6 +37,11 @@ describe("FileTokenStore", () => {
     const store = new FileTokenStore({ filePath });
 
     await store.saveTenantState(DEFAULT_TENANT_ID, {
+      oauth: {
+        access_token: "token-123",
+        refresh_token: "refresh-123",
+        account_id: "acct-1",
+      },
       board_mapping: {
         item_name_strategy: "deceased_name_only",
         columns: {
@@ -52,6 +57,8 @@ describe("FileTokenStore", () => {
     const tenantState = await store.getTenantState(DEFAULT_TENANT_ID);
 
     expect(state.active_tenant_id).toBe(DEFAULT_TENANT_ID);
+    expect(state.tokens.monday_refresh_token).toBe("refresh-123");
+    expect(tenantState.oauth.refresh_token).toBe("refresh-123");
     expect(tenantState.board_mapping).toEqual({
       item_name_strategy: "deceased_name_only",
       columns: {

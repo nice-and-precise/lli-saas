@@ -9,7 +9,7 @@ afterEach(() => {
   delete globalThis.__LLI_RUNTIME_CONFIG__;
 });
 
-test("renders live dashboard status, saves mapping, and runs the obituary scan flow", async () => {
+test("preserves pre-scan validation details, blocks scan submission, and revalidates after mapping changes", async () => {
   globalThis.__LLI_RUNTIME_CONFIG__ = {
     crmAdapterBaseUrl: "https://crm-adapter.example.com",
     leadEngineBaseUrl: "https://lead-engine.example.com",
@@ -40,9 +40,17 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
           item_name_strategy: "deceased_name_county",
           columns: {
             deceased_name: "name",
+            owner_name: "owner_col",
             tier: "status",
           },
         },
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        boards: [{ id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] }],
+        selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
       }),
     })
     .mockResolvedValueOnce({
@@ -54,17 +62,19 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
         token_validation: {
           status: "valid",
           message: "Monday OAuth token is valid.",
-          refresh: { status: "not_supported", message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available." },
+          refresh: {
+            status: "not_supported",
+            message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available.",
+          },
         },
         board_validation: {
           field_results: [
-            { field: "owner_name", label: "Owner Name", status: "missing_mapping", message: "Owner Name is not mapped to a Monday column.", guidance: "Map Owner Name to a Monday column before running a scan." },
+            { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner Name." },
             { field: "obituary_url", label: "Obituary URL", status: "missing_mapping", message: "Obituary URL is not mapped to a Monday column.", guidance: "Map Obituary URL to a Monday column before running a scan." },
-            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Status." },
+            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Tier." },
           ],
         },
         issues: [
-          { code: "missing_required_mapping", message: "Owner Name is not mapped to a Monday column.", guidance: "Open board mapping and assign a destination column for Owner Name." },
           { code: "missing_required_mapping", message: "Obituary URL is not mapped to a Monday column.", guidance: "Open board mapping and assign a destination column for Obituary URL." },
         ],
       }),
@@ -78,6 +88,7 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
           item_name_strategy: "deceased_name_county",
           columns: {
             deceased_name: "name",
+            owner_name: "owner_col",
             tier: "status",
             obituary_url: "obit_link",
           },
@@ -93,13 +104,40 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
         token_validation: {
           status: "valid",
           message: "Monday OAuth token is valid.",
-          refresh: { status: "not_supported", message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available." },
+          refresh: {
+            status: "not_supported",
+            message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available.",
+          },
         },
         board_validation: {
           field_results: [
-            { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner." },
+            { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner Name." },
             { field: "obituary_url", label: "Obituary URL", status: "valid", message: "Obituary URL is mapped to Obituary URL." },
-            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Status." },
+            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Tier." },
+          ],
+        },
+        issues: [],
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ready: true,
+        status: "ready",
+        selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
+        token_validation: {
+          status: "valid",
+          message: "Monday OAuth token is valid.",
+          refresh: {
+            status: "not_supported",
+            message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available.",
+          },
+        },
+        board_validation: {
+          field_results: [
+            { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner Name." },
+            { field: "obituary_url", label: "Obituary URL", status: "valid", message: "Obituary URL is mapped to Obituary URL." },
+            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Tier." },
           ],
         },
         issues: [],
@@ -140,6 +178,7 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
           item_name_strategy: "deceased_name_county",
           columns: {
             deceased_name: "name",
+            owner_name: "owner_col",
             tier: "status",
             obituary_url: "obit_link",
           },
@@ -162,13 +201,16 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
         token_validation: {
           status: "valid",
           message: "Monday OAuth token is valid.",
-          refresh: { status: "not_supported", message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available." },
+          refresh: {
+            status: "not_supported",
+            message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available.",
+          },
         },
         board_validation: {
           field_results: [
-            { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner." },
+            { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner Name." },
             { field: "obituary_url", label: "Obituary URL", status: "valid", message: "Obituary URL is mapped to Obituary URL." },
-            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Status." },
+            { field: "tier", label: "Tier", status: "valid", message: "Tier is mapped to Tier." },
           ],
         },
         issues: [],
@@ -182,10 +224,12 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
   );
 
   expect(screen.getByRole("heading", { name: /obituary intelligence cockpit/i })).toBeInTheDocument();
-  await waitFor(() =>
-    expect(screen.getAllByText(/pilot leads/i).length).toBeGreaterThan(0),
-  );
-  expect(screen.getAllByText(/deceased_name_county/i).length).toBeGreaterThan(0);
+  await waitFor(() => expect(screen.getAllByText(/pilot leads/i).length).toBeGreaterThan(0));
+
+  expect(screen.getByText(/fix monday setup issues before starting a scan/i)).toBeInTheDocument();
+  expect(screen.getAllByText(/obituary url is not mapped to a monday column/i).length).toBeGreaterThan(0);
+  expect(screen.getByText(/refresh readiness:/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /run obituary scan/i })).toBeDisabled();
 
   fireEvent.change(screen.getByLabelText(/^obituary_url$/i), {
     target: { value: "obit_link" },
@@ -200,7 +244,18 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
       }),
     ),
   );
+  await waitFor(() => expect(screen.getByRole("button", { name: /run obituary scan/i })).toBeEnabled());
 
-  expect(screen.getByText(/fix monday setup issues before starting a scan/i)).toBeInTheDocument();
-  expect(screen.getByText(/refresh readiness:/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /run obituary scan/i }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://lead-engine.example.com/run-scan",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    ),
+  );
+  await waitFor(() => expect(screen.getAllByText(/scan-2/i).length).toBeGreaterThan(0));
+  await waitFor(() => expect(screen.getByText(/2 leads generated/i)).toBeInTheDocument());
 });

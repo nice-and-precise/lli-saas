@@ -169,6 +169,7 @@ async function getPersistedState(tokenStore, tenantId = DEFAULT_TENANT_ID) {
         : {
             oauth: {
               access_token: state.tokens?.monday_access_token ?? null,
+              refresh_token: state.tokens?.monday_refresh_token ?? null,
               account_id: state.account_id ?? null,
             },
             selected_board: state.board ?? null,
@@ -181,8 +182,15 @@ async function getPersistedState(tokenStore, tenantId = DEFAULT_TENANT_ID) {
     return {
       ...state,
       tenant_id: tenantId,
+      oauth: {
+        access_token: tenantState.oauth?.access_token ?? state.tokens?.monday_access_token ?? null,
+        refresh_token: tenantState.oauth?.refresh_token ?? state.tokens?.monday_refresh_token ?? null,
+        account_id: tenantState.oauth?.account_id ?? state.account_id ?? null,
+      },
       tokens: {
         monday_access_token: tenantState.oauth?.access_token ?? state.tokens?.monday_access_token ?? null,
+        monday_refresh_token:
+          tenantState.oauth?.refresh_token ?? state.tokens?.monday_refresh_token ?? null,
       },
       account_id: tenantState.oauth?.account_id ?? state.account_id ?? null,
       board: tenantState.selected_board ?? state.board ?? null,
@@ -194,9 +202,19 @@ async function getPersistedState(tokenStore, tenantId = DEFAULT_TENANT_ID) {
 
   const token =
     typeof tokenStore.get === "function" ? await tokenStore.get("monday_access_token") : null;
+  const refreshToken =
+    typeof tokenStore.get === "function" ? await tokenStore.get("monday_refresh_token") : null;
 
   return {
-    tokens: token ? { monday_access_token: token } : {},
+    oauth: {
+      access_token: token,
+      refresh_token: refreshToken,
+      account_id: null,
+    },
+    tokens: {
+      monday_access_token: token,
+      monday_refresh_token: refreshToken,
+    },
     board: null,
     account_id: null,
     board_mapping: createDefaultMapping(),
@@ -233,6 +251,23 @@ function buildMondayRequestErrorResponse(error, fallbackMessage) {
   return {
     error: fallbackMessage,
     details: error.message,
+  };
+}
+
+function buildBoardValidationError({ code, message, guidance, details = {} }) {
+  return {
+    ok: false,
+    required_fields: ["owner_name", "obituary_url", "tier"],
+    field_results: [],
+    issues: [
+      {
+        code,
+        severity: "error",
+        message,
+        guidance,
+        details,
+      },
+    ],
   };
 }
 
@@ -332,27 +367,73 @@ async function buildPreScanValidation({ tokenStore, mondayClient, mondayConfig, 
     mondayConfig,
   });
 
-  const boardValidation = state.board?.id
-    ? buildBoardValidation({
-        board: state.board,
+  let selectedBoard = state.board ?? null;
+  let boardValidation;
+
+  if (!state.board?.id) {
+    boardValidation = {
+      ok: false,
+      required_fields: ["owner_name", "obituary_url", "tier"],
+      field_results: [],
+      issues: [],
+    };
+  } else {
+    if (token && typeof mondayClient.getBoard === "function") {
+      try {
+        const liveBoard = await mondayClient.getBoard({
+          token,
+          boardId: state.board.id,
+        });
+
+        if (!liveBoard) {
+          boardValidation = buildBoardValidationError({
+            code: "selected_board_not_found",
+            message: "The selected Monday board is no longer available.",
+            guidance: "Select another Monday board before running a scan.",
+            details: { board_id: state.board.id },
+          });
+        } else {
+          selectedBoard = {
+            id: String(liveBoard.id),
+            name: liveBoard.name,
+            columns: liveBoard.columns ?? [],
+          };
+          if (typeof tokenStore.saveTenantState === "function") {
+            await tokenStore.saveTenantState(tenantId, {
+              selected_board: selectedBoard,
+            });
+          }
+        }
+      } catch (error) {
+        boardValidation = buildBoardValidationError({
+          code: "board_schema_check_failed",
+          message: "Unable to verify the selected Monday board schema right now.",
+          guidance: "Try validation again. If this keeps failing, confirm the board still exists and that Monday access is still connected.",
+          details: {
+            board_id: state.board.id,
+            error: error.message,
+          },
+        });
+      }
+    }
+
+    if (!boardValidation) {
+      boardValidation = buildBoardValidation({
+        board: selectedBoard,
         mapping: state.board_mapping ?? createDefaultMapping(),
-      })
-    : {
-        ok: false,
-        required_fields: ["owner_name", "obituary_url", "tier"],
-        field_results: [],
-        issues: [],
-      };
+      });
+    }
+  }
 
   const summary = summarizeValidation({
     tokenValidation,
     boardValidation,
-    boardSelected: Boolean(state.board?.id),
+    boardSelected: Boolean(selectedBoard?.id),
   });
 
   return {
     tenant_id: tenantId,
-    selected_board: state.board ?? null,
+    selected_board: selectedBoard,
     mapping: state.board_mapping ?? createDefaultMapping(),
     token_validation: tokenValidation,
     board_validation: boardValidation,
@@ -602,10 +683,14 @@ function createApp(options = {}) {
 
     const tokenPayload = await mondayClient.exchangeCodeForToken(code);
     await tokenStore.save("monday_access_token", tokenPayload.access_token);
+    if (tokenPayload.refresh_token) {
+      await tokenStore.save("monday_refresh_token", tokenPayload.refresh_token);
+    }
     if (typeof tokenStore.saveState === "function") {
       await tokenStore.saveState({
         tokens: {
           monday_access_token: tokenPayload.access_token,
+          monday_refresh_token: tokenPayload.refresh_token ?? null,
         },
         account_id: tokenPayload.account_id ?? null,
       });
@@ -847,6 +932,7 @@ function createApp(options = {}) {
 
 module.exports = {
   SOURCE_OWNER_BOARD_NAME,
+  buildPreScanValidation,
   createApp,
   getPersistedState,
 };

@@ -34,6 +34,15 @@ const MAPPING_FIELDS = [
   "source",
 ];
 
+class HttpJsonError extends Error {
+  constructor(message, { status, payload }) {
+    super(message);
+    this.name = "HttpJsonError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 async function fetchJson(baseUrl, path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     headers: {
@@ -42,13 +51,37 @@ async function fetchJson(baseUrl, path, options = {}) {
     },
     ...options,
   });
-  const payload = await response.json();
+  let payload = null;
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
 
   if (!response.ok) {
-    throw new Error(payload.error ?? payload.errors?.[0]?.message ?? `Request failed for ${path}`);
+    throw new HttpJsonError(
+      payload?.error ?? payload?.errors?.[0]?.message ?? payload?.issues?.[0]?.message ?? `Request failed for ${path}`,
+      {
+        status: response.status,
+        payload,
+      },
+    );
   }
 
   return payload;
+}
+
+async function fetchJsonPreservingPayload(baseUrl, path, options = {}, shouldPreserve = () => false) {
+  try {
+    return await fetchJson(baseUrl, path, options);
+  } catch (error) {
+    if (error instanceof HttpJsonError && shouldPreserve(error.payload, error.status)) {
+      return error.payload;
+    }
+
+    throw error;
+  }
 }
 
 function formatColumnSummary(mapping) {
@@ -102,7 +135,12 @@ export default function DashboardPage() {
         fetchJson(crmAdapterBaseUrl, "/status"),
         fetchJson(crmAdapterBaseUrl, "/mapping"),
         fetchJson(crmAdapterBaseUrl, "/boards"),
-        fetchJson(crmAdapterBaseUrl, "/validation/pre-scan"),
+        fetchJsonPreservingPayload(
+          crmAdapterBaseUrl,
+          "/validation/pre-scan",
+          {},
+          (payload) => typeof payload?.ready === "boolean",
+        ),
       ]);
 
       if (statusPayload.status !== "fulfilled") {
@@ -174,7 +212,12 @@ export default function DashboardPage() {
 
     try {
       const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
-      const validationResult = await fetchJson(crmAdapterBaseUrl, "/validation/pre-scan");
+      const validationResult = await fetchJsonPreservingPayload(
+        crmAdapterBaseUrl,
+        "/validation/pre-scan",
+        {},
+        (payload) => typeof payload?.ready === "boolean",
+      );
       startTransition(() => {
         setValidation(validationResult);
       });
@@ -260,9 +303,17 @@ export default function DashboardPage() {
         method: "PUT",
         body: JSON.stringify(payload),
       });
+      const refreshedValidation = await fetchJsonPreservingPayload(
+        crmAdapterBaseUrl,
+        "/validation/pre-scan",
+        {},
+        (validationPayload) => typeof validationPayload?.ready === "boolean",
+      );
       startTransition(() => {
         setMapping(result);
         setMappingDraft(buildInitialMappingDraft(result.mapping));
+        setValidation(refreshedValidation);
+        setValidationError(null);
       });
     } catch (requestError) {
       setError(requestError.message);
@@ -274,7 +325,7 @@ export default function DashboardPage() {
   const validationIssues = validation?.issues ?? [];
   const tokenValidation = validation?.token_validation;
   const boardValidation = validation?.board_validation;
-  const canRunScan = validation?.ready !== false;
+  const canRunScan = validation?.ready === true && !loading;
   const validationHeadline = validation?.ready
     ? "Monday setup is ready for a scan."
     : "Fix Monday setup issues before starting a scan.";
@@ -437,6 +488,9 @@ export default function DashboardPage() {
           <p className="subtle">
             Each run pulls fresh owner data from Monday instead of scanning a persisted owner corpus.
           </p>
+          {!canRunScan ? (
+            <p className="subtle">Scan submission is blocked until the pre-scan validator passes.</p>
+          ) : null}
           {lastRunSummary ? (
             <div className="result-strip">
               <strong>{lastRunSummary.scan_id}</strong>

@@ -16,6 +16,7 @@ function createDefaultTenantState(overrides = {}) {
     tenant_id: DEFAULT_TENANT_ID,
     oauth: {
       access_token: null,
+      refresh_token: null,
       account_id: null,
     },
     selected_board: null,
@@ -31,6 +32,7 @@ function normalizeTenantState(tenantState = {}) {
     tenant_id: tenantState.tenant_id ?? DEFAULT_TENANT_ID,
     oauth: {
       access_token: tenantState.oauth?.access_token ?? null,
+      refresh_token: tenantState.oauth?.refresh_token ?? null,
       account_id: tenantState.oauth?.account_id ?? null,
     },
     selected_board: tenantState.selected_board ?? null,
@@ -46,6 +48,7 @@ function normalizeState(rawState = {}) {
     tenant_id: tenantId,
     oauth: {
       access_token: rawState.tokens?.monday_access_token ?? null,
+      refresh_token: rawState.tokens?.monday_refresh_token ?? rawState.oauth?.refresh_token ?? null,
       account_id: rawState.account_id ?? null,
     },
     selected_board: rawState.board ?? null,
@@ -66,6 +69,8 @@ function normalizeState(rawState = {}) {
     tokens: {
       monday_access_token:
         existingTenants[tenantId]?.oauth?.access_token ?? legacyTenant.oauth.access_token ?? null,
+      monday_refresh_token:
+        existingTenants[tenantId]?.oauth?.refresh_token ?? legacyTenant.oauth.refresh_token ?? null,
     },
     board: existingTenants[tenantId]?.selected_board ?? legacyTenant.selected_board ?? null,
     board_mapping:
@@ -135,6 +140,8 @@ class MemoryTokenStore {
       oauth: {
         access_token:
           partialState.tokens?.monday_access_token ?? partialState.oauth?.access_token ?? undefined,
+        refresh_token:
+          partialState.tokens?.monday_refresh_token ?? partialState.oauth?.refresh_token ?? undefined,
         account_id: partialState.account_id ?? partialState.oauth?.account_id ?? undefined,
       },
       selected_board: partialState.board ?? partialState.selected_board,
@@ -219,6 +226,8 @@ class FileTokenStore {
       oauth: {
         access_token:
           partialState.tokens?.monday_access_token ?? partialState.oauth?.access_token ?? undefined,
+        refresh_token:
+          partialState.tokens?.monday_refresh_token ?? partialState.oauth?.refresh_token ?? undefined,
         account_id: partialState.account_id ?? partialState.oauth?.account_id ?? undefined,
       },
       selected_board: partialState.board ?? partialState.selected_board,

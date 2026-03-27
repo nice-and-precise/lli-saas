@@ -16,6 +16,13 @@ function findBoardColumnById(columns, columnId) {
   return (columns ?? []).find((column) => String(column.id) === String(columnId));
 }
 
+function findBoardColumnByLabel(columns, label) {
+  const normalizedLabel = normalizeLookupValue(label);
+  return (columns ?? []).find(
+    (column) => normalizeLookupValue(column?.title) === normalizedLabel,
+  );
+}
+
 function buildBoardValidation({ board, mapping }) {
   const issues = [];
   const field_results = [];
@@ -24,6 +31,25 @@ function buildBoardValidation({ board, mapping }) {
     const columnId = mapping?.columns?.[field] ?? "";
     const column = columnId ? findBoardColumnById(board?.columns, columnId) : null;
     const label = REQUIRED_FIELD_LABELS[field] ?? field;
+    const requiredColumn = findBoardColumnByLabel(board?.columns, label);
+
+    if (!requiredColumn) {
+      field_results.push({
+        field,
+        label,
+        status: "missing_required_column",
+        message: `${label} column is missing from the selected board.`,
+        guidance: `Add a ${label} column to the Monday board before running a scan.`,
+      });
+      issues.push({
+        code: "missing_required_board_field",
+        field,
+        severity: "error",
+        message: `${label} column is missing from the selected board.`,
+        guidance: `Add the ${label} column to the selected Monday board and rerun validation.`,
+      });
+      continue;
+    }
 
     if (!columnId) {
       field_results.push({
@@ -59,6 +85,30 @@ function buildBoardValidation({ board, mapping }) {
         severity: "error",
         message: `${label} is mapped to ${columnId}, but that column does not exist on the selected board.`,
         guidance: `Refresh the board schema and update the ${label} mapping.`,
+      });
+      continue;
+    }
+
+    if (String(column.id) !== String(requiredColumn.id)) {
+      field_results.push({
+        field,
+        label,
+        status: "mapped_to_unexpected_column",
+        column_id: columnId,
+        column_title: column.title,
+        expected_column_id: String(requiredColumn.id),
+        expected_column_title: requiredColumn.title,
+        message: `${label} is mapped to ${column.title}, but scans require the ${requiredColumn.title} column.`,
+        guidance: `Remap ${label} to the ${requiredColumn.title} column before running a scan.`,
+      });
+      issues.push({
+        code: "required_field_mapping_mismatch",
+        field,
+        column_id: columnId,
+        expected_column_id: String(requiredColumn.id),
+        severity: "error",
+        message: `${label} is mapped to ${column.title}, but scans require the ${requiredColumn.title} column.`,
+        guidance: `Update the ${label} mapping to use the ${requiredColumn.title} column.`,
       });
       continue;
     }

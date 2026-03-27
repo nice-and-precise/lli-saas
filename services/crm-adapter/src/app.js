@@ -236,14 +236,52 @@ function buildMondayRequestErrorResponse(error, fallbackMessage) {
   };
 }
 
-async function validateMondayToken({ mondayClient, token, mondayConfig }) {
+async function validateMondayToken({ mondayClient, token, refreshToken, mondayConfig }) {
   const oauthConfigured = Object.values(mondayConfig).every(Boolean);
+
+  const refreshCheckResult = (() => {
+    if (!oauthConfigured) {
+      return {
+        ok: false,
+        status: "oauth_not_configured",
+        code: "oauth_configuration_incomplete",
+        message: "Monday OAuth client configuration is incomplete, so refresh readiness cannot be checked.",
+        guidance: "Set MONDAY_CLIENT_ID, MONDAY_CLIENT_SECRET, and MONDAY_REDIRECT_URI before running scans.",
+      };
+    }
+
+    if (!token) {
+      return {
+        ok: false,
+        status: "unavailable",
+        message: "No token available to evaluate refresh readiness.",
+        guidance: "Connect Monday before running validation.",
+      };
+    }
+
+    if (!refreshToken) {
+      return {
+        ok: true,
+        status: "not_supported",
+        message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available.",
+        guidance: "If Monday invalidates the access token, reconnect the integration to issue a fresh token.",
+      };
+    }
+
+    return {
+      ok: true,
+      status: "ready",
+      message: "Refresh token is available for proactive Monday OAuth renewal.",
+      guidance: null,
+    };
+  })();
 
   if (!oauthConfigured || !token) {
     return buildTokenValidation({
       tokenPresent: Boolean(token),
       oauthConfigured,
       tokenCheckResult: null,
+      refreshCheckResult,
     });
   }
 
@@ -255,11 +293,10 @@ async function validateMondayToken({ mondayClient, token, mondayConfig }) {
       tokenCheckResult: {
         ok: true,
         status: "valid",
-        message: me?.name
-          ? `Monday OAuth token is valid for ${me.name}.`
-          : "Monday OAuth token is valid.",
+        message: me?.name ? `Monday OAuth token is valid for ${me.name}.` : "Monday OAuth token is valid.",
         details: me ? { account: me } : {},
       },
+      refreshCheckResult,
     });
   } catch (error) {
     return buildTokenValidation({
@@ -279,6 +316,7 @@ async function validateMondayToken({ mondayClient, token, mondayConfig }) {
           : "Try validation again. If this keeps failing, reconnect Monday and verify Monday API access.",
         details: { error: error.message },
       },
+      refreshCheckResult,
     });
   }
 }
@@ -286,9 +324,11 @@ async function validateMondayToken({ mondayClient, token, mondayConfig }) {
 async function buildPreScanValidation({ tokenStore, mondayClient, mondayConfig, tenantId }) {
   const state = await getPersistedState(tokenStore, tenantId);
   const token = state.tokens?.monday_access_token ?? null;
+  const refreshToken = state.tokens?.monday_refresh_token ?? state.oauth?.refresh_token ?? null;
   const tokenValidation = await validateMondayToken({
     mondayClient,
     token,
+    refreshToken,
     mondayConfig,
   });
 
@@ -706,47 +746,22 @@ function createApp(options = {}) {
 
   app.get("/boards/validate", async (req, res) => {
     const tenantId = getTenantId(req);
-    const state = await getPersistedState(tokenStore, tenantId);
-    const token = state.tokens?.monday_access_token ?? null;
+    const validation = await buildPreScanValidation({
+      tokenStore,
+      mondayClient,
+      mondayConfig,
+      tenantId,
+    });
 
-    if (!token) {
-      return res.status(409).json({ error: "Monday OAuth token not configured" });
-    }
-
-    if (!state.board?.id) {
-      return res.status(409).json({ error: "Monday board not selected" });
-    }
-
-    let board;
-    try {
-      board = await mondayClient.getBoard({
-        token,
-        boardId: state.board.id,
-      });
-    } catch (error) {
-      return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to query Monday board"));
-    }
-
-    if (!board) {
-      return res.status(404).json({ error: "Board not found" });
-    }
-
-    const requiredColumns = ["Owner Name", "Obituary URL", "Tier"];
-    const missingColumns = requiredColumns.filter(
-      (requiredColumn) => !board.columns.some((boardColumn) => boardColumn.title === requiredColumn)
-    );
-
-    if (missingColumns.length > 0) {
-      return res.status(400).json({
-        error: "Board is missing required columns",
-        missing_columns: missingColumns,
-      });
-    }
-
-    return res.json({
-      valid: true,
-      board_id: board.id,
-      board_name: board.name,
+    return res.status(validation.ready ? 200 : 409).json({
+      valid: validation.ready,
+      tenant_id: tenantId,
+      selected_board: validation.selected_board,
+      token_validation: validation.token_validation,
+      board_validation: validation.board_validation,
+      issues: validation.issues,
+      status: validation.status,
+      ready: validation.ready,
     });
   });
 

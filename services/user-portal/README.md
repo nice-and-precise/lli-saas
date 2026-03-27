@@ -19,9 +19,11 @@ Pilot operator portal for `lli-saas` with live Monday delivery status, destinati
 
 The dashboard:
 
-- reads status, boards, and mapping from `crm-adapter`
+- reads status, boards, mapping, and pre-scan validation from `crm-adapter`
 - lets the operator select a destination board
 - lets the operator edit the board mapping for rich obituary/heir fields
+- blocks scan submission until Monday validation passes
+- surfaces OAuth token health, refresh readiness, required field validation, and actionable setup guidance
 - launches scans through `lead-engine /run-scan`
 - shows delivery history, latest lead summary, and scan-run visibility
 

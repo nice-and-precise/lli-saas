@@ -20,6 +20,19 @@ Express Monday adapter for OAuth, source-owner fetch, destination-board mapping,
 
 The adapter persists tenant-aware Monday OAuth, selected destination board, board mapping, scan runs, and delivery state in the file at `CRM_ADAPTER_STATE_PATH`. It does not persist the source owner corpus. In Kubernetes, pilot durability requires the mounted storage path from `infra/`.
 
+## Pre-scan readiness validator
+
+Before a lead scan starts, the adapter now validates:
+
+- OAuth client configuration presence
+- stored Monday access token validity via `me`
+- refresh readiness status (including explicit "not supported" guidance when no refresh token exists)
+- selected destination board presence
+- required field mappings for `Owner Name`, `Obituary URL`, and `Tier`
+- whether mapped column IDs still exist on the selected board
+
+The response is designed for operator-facing UX and returns actionable `issues[]`, field-level results, and guidance strings that can be shown directly in the portal.
+
 ## Monday assumptions
 
 - Source owner board name: `Clients`
@@ -36,6 +49,8 @@ The adapter persists tenant-aware Monday OAuth, selected destination board, boar
 - `POST /boards/select` with `{ "board_id": "..." }` persists the selected destination board metadata.
 - `GET /mapping` returns the persisted board mapping for the selected destination board.
 - `PUT /mapping` persists a focused board mapping model for the selected destination board.
+- `GET /boards/validate` runs the full pre-scan readiness validator and returns board, mapping, OAuth-token, and refresh-readiness results with operator guidance.
+- `GET /validation/pre-scan` returns the same readiness payload used by the portal before scan submission.
 - `GET /deliveries` returns persisted delivery attempts and scan-run status for the active tenant.
 - `GET /status` returns the current board, mapping, delivery, and scan snapshot for the active tenant.
 - `POST /leads` validates the canonical lead contract, checks for duplicates on the selected board, and records created, skipped, or failed delivery outcomes.

@@ -224,11 +224,16 @@ export default function DashboardPage() {
         body: JSON.stringify({ board_id: selectedBoardId }),
       });
 
-      const validation = await fetchJson(crmAdapterBaseUrl, "/boards/validate");
-
-      if (!validation.valid) {
-        setValidationError(validation.missing_columns);
-      } else {
+      try {
+        const validation = await fetchJson(crmAdapterBaseUrl, "/boards/validate");
+        startTransition(() => {
+          setValidation(validation);
+        });
+        await refreshDashboard();
+      } catch (validationRequestError) {
+        if (validationRequestError.message) {
+          setValidationError(validationRequestError.message);
+        }
         await refreshDashboard();
       }
     } catch (requestError) {
@@ -327,6 +332,9 @@ export default function DashboardPage() {
             <p><strong>Status:</strong> {tokenValidation?.status ?? "unknown"}</p>
             <p>{tokenValidation?.message ?? "No validation result yet."}</p>
             {tokenValidation?.guidance ? <p className="subtle">{tokenValidation.guidance}</p> : null}
+            <p><strong>Refresh readiness:</strong> {tokenValidation?.refresh?.status ?? "unknown"}</p>
+            <p>{tokenValidation?.refresh?.message ?? "No refresh validation result yet."}</p>
+            {tokenValidation?.refresh?.guidance ? <p className="subtle">{tokenValidation.refresh.guidance}</p> : null}
           </div>
           <div className="validation-card">
             <h3>Board requirements</h3>
@@ -465,13 +473,8 @@ export default function DashboardPage() {
           </form>
           {validationError && (
             <div className="alert-panel">
-              <h3>Board validation failed</h3>
-              <p>The selected board is missing the following required columns:</p>
-              <ul>
-                {validationError.map((column) => (
-                  <li key={column}>{column}</li>
-                ))}
-              </ul>
+              <h3>Board validation needs attention</h3>
+              <p>{validationError}</p>
             </div>
           )}
         </article>

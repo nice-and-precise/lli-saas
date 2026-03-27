@@ -51,7 +51,11 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
         ready: false,
         status: "action_required",
         selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
-        token_validation: { status: "valid", message: "Monday OAuth token is valid." },
+        token_validation: {
+          status: "valid",
+          message: "Monday OAuth token is valid.",
+          refresh: { status: "not_supported", message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available." },
+        },
         board_validation: {
           field_results: [
             { field: "owner_name", label: "Owner Name", status: "missing_mapping", message: "Owner Name is not mapped to a Monday column.", guidance: "Map Owner Name to a Monday column before running a scan." },
@@ -86,7 +90,11 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
         ready: true,
         status: "ready",
         selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
-        token_validation: { status: "valid", message: "Monday OAuth token is valid." },
+        token_validation: {
+          status: "valid",
+          message: "Monday OAuth token is valid.",
+          refresh: { status: "not_supported", message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available." },
+        },
         board_validation: {
           field_results: [
             { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner." },
@@ -151,7 +159,11 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
         ready: true,
         status: "ready",
         selected_board: { id: "board-1", name: "Pilot Leads", columns: [{ id: "name", title: "Name", type: "text" }] },
-        token_validation: { status: "valid", message: "Monday OAuth token is valid." },
+        token_validation: {
+          status: "valid",
+          message: "Monday OAuth token is valid.",
+          refresh: { status: "not_supported", message: "Stored token can be validated, but proactive refresh is not supported because no refresh token is available." },
+        },
         board_validation: {
           field_results: [
             { field: "owner_name", label: "Owner Name", status: "valid", message: "Owner Name is mapped to Owner." },
@@ -190,4 +202,5 @@ test("renders live dashboard status, saves mapping, and runs the obituary scan f
   );
 
   expect(screen.getByText(/fix monday setup issues before starting a scan/i)).toBeInTheDocument();
+  expect(screen.getByText(/refresh readiness:/i)).toBeInTheDocument();
 });

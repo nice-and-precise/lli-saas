@@ -82,7 +82,7 @@ function buildBoardValidation({ board, mapping }) {
   };
 }
 
-function buildTokenValidation({ tokenPresent, oauthConfigured, tokenCheckResult }) {
+function buildTokenValidation({ tokenPresent, oauthConfigured, tokenCheckResult, refreshCheckResult }) {
   const issues = [];
   let status = "valid";
   let message = "Monday OAuth token is valid.";
@@ -121,21 +121,45 @@ function buildTokenValidation({ tokenPresent, oauthConfigured, tokenCheckResult 
     });
   }
 
+  const refresh = {
+    ok: refreshCheckResult?.ok ?? false,
+    status: refreshCheckResult?.status ?? (tokenPresent ? "not_supported" : "unavailable"),
+    message:
+      refreshCheckResult?.message ??
+      (tokenPresent
+        ? "Stored token cannot be proactively refreshed because no refresh token is available."
+        : "No token available to evaluate refresh readiness."),
+    guidance:
+      refreshCheckResult?.guidance ??
+      (tokenPresent
+        ? "If Monday invalidates the access token, reconnect the integration to issue a fresh token."
+        : "Connect Monday before running validation."),
+    details: refreshCheckResult?.details ?? {},
+  };
+
+  if (!refresh.ok && refresh.status !== "not_supported" && refresh.status !== "unavailable") {
+    issues.push({
+      code: refreshCheckResult?.code ?? "oauth_refresh_check_failed",
+      severity: refreshCheckResult?.severity ?? "error",
+      message: refresh.message,
+      guidance: refresh.guidance,
+      details: refresh.details,
+    });
+  }
+
   return {
     ok: issues.length === 0,
     status,
     message,
     guidance,
     checked_at: new Date().toISOString(),
+    refresh,
     issues,
   };
 }
 
 function summarizeValidation({ tokenValidation, boardValidation, boardSelected }) {
-  const issues = [
-    ...(tokenValidation?.issues ?? []),
-    ...(boardValidation?.issues ?? []),
-  ];
+  const issues = [...(tokenValidation?.issues ?? []), ...(boardValidation?.issues ?? [])];
 
   if (!boardSelected) {
     issues.unshift({

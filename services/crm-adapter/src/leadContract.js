@@ -293,6 +293,8 @@ function mapLeadToMondayItemWithMapping(lead, mapping, boardColumns = []) {
 }
 
 module.exports = {
+  ALLOWED_ITEM_NAME_STRATEGIES,
+  ALLOWED_MAPPED_FIELDS,
   getLeadSchemaPath,
   mapLeadToMondayItemWithMapping,
   validateBoardMapping,

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 def _resolve_contract_path(filename: str) -> Path:
@@ -71,10 +71,10 @@ class HeirRecord(BaseModel):
 class ObituaryMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    url: str = Field(min_length=1)
+    url: HttpUrl
     source_id: str = Field(min_length=1)
-    published_at: str | None = None
-    death_date: str | None = None
+    published_at: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}T")
+    death_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     deceased_city: str | None = None
     deceased_state: str | None = None
 
@@ -94,8 +94,8 @@ class Lead(BaseModel):
 
     scan_id: str = Field(min_length=1)
     source: str = Field(min_length=1)
-    run_started_at: str
-    run_completed_at: str
+    run_started_at: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T")
+    run_completed_at: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T")
     owner_id: str = Field(min_length=1)
     owner_name: str = Field(min_length=1)
     deceased_name: str = Field(min_length=1)
@@ -119,7 +119,7 @@ class ObituaryEngineRunScanRequest(BaseModel):
     scan_id: str = Field(min_length=1)
     owner_records: list[OwnerRecord] = Field(default_factory=list)
     lookback_days: int = Field(default=7, ge=1, le=30)
-    reference_date: str | None = None
+    reference_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     source_ids: list[str] = Field(default_factory=list)
 
 
@@ -127,8 +127,8 @@ class ObituaryEngineScanResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: str = Field(default="obituary_intelligence_engine", min_length=1)
-    run_started_at: str
-    run_completed_at: str
+    run_started_at: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T")
+    run_completed_at: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T")
     leads: list[Lead] = Field(default_factory=list)
 
 

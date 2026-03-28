@@ -22,10 +22,19 @@ Iowa obituary-intelligence service for `lli-saas`.
 
 - `POST /run-scan`
   - accepts `scan_id`, canonical `owner_records`, `lookback_days`, optional `reference_date`, and optional `source_ids`
+  - request and response payloads are validated with Pydantic models at the HTTP boundary
+  - invalid timestamps, malformed obituary URLs, extra fields, and enum mismatches are rejected before downstream processing
 - `GET /health`
   - basic process health
 - `GET /ready`
   - state-path readiness
+
+## Lead Contract Validation
+
+- Canonical lead objects are defined in `src/contracts.py` and mirrored by `shared/contracts/lead.schema.json`.
+- `Lead`, `ObituaryMetadata`, and related nested models enforce required fields, strict object shapes, ISO-like date/date-time strings, and obituary URL validation.
+- `run_scan()` builds `Lead` instances directly, so malformed lead output fails fast inside `obituary-intelligence-engine` instead of leaking into `crm-adapter`.
+- Validation errors surface as FastAPI 422 responses on request parsing or as service exceptions during lead construction, which should be logged with the offending scan ID and obituary source.
 
 ## State
 

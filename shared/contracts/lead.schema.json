@@ -23,7 +23,9 @@
     "unexpected_death",
     "notes",
     "tags",
-    "raw_artifacts"
+    "raw_artifacts",
+    "owner_profile_url",
+    "obituary_raw_url"
   ],
   "properties": {
     "scan_id": {
@@ -238,7 +240,9 @@
         "last_name_score",
         "first_name_score",
         "location_bonus_applied",
-        "status"
+        "status",
+        "matched_fields",
+        "explanation"
       ],
       "properties": {
         "score": {
@@ -259,6 +263,18 @@
             "auto_confirmed",
             "pending_review"
           ]
+        },
+        "matched_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "explanation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -303,6 +319,20 @@
       "items": {
         "type": "string"
       }
+    },
+    "owner_profile_url": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uri"
+    },
+    "obituary_raw_url": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uri"
     }
   }
 }

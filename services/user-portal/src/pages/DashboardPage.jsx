@@ -75,6 +75,69 @@ function buildInitialMappingDraft(mapping) {
   };
 }
 
+function formatPercent(value) {
+  if (value == null || Number.isNaN(Number(value))) {
+    return "n/a";
+  }
+  return `${Number(value).toFixed(1)}%`;
+}
+
+function formatMatchedFields(fields = []) {
+  if (!fields.length) {
+    return "Not available";
+  }
+  return fields.join(", ");
+}
+
+function buildOwnerLink(lead) {
+  return lead?.owner_profile_url ?? null;
+}
+
+function buildObituaryLink(lead) {
+  return lead?.obituary_raw_url ?? lead?.obituary?.url ?? null;
+}
+
+function LeadConfidenceCard({ lead }) {
+  if (!lead) {
+    return <p>No scan result details yet.</p>;
+  }
+
+  const obituaryLink = buildObituaryLink(lead);
+  const ownerLink = buildOwnerLink(lead);
+
+  return (
+    <div className="scan-result-card">
+      <p className="lead-title">{lead.deceased_name}</p>
+      <p>Owner: {lead.owner_name}</p>
+      <p>Tier: {lead.tier}</p>
+      <p>
+        Confidence score: <strong>{formatPercent(lead.match?.score)}</strong>
+      </p>
+      <p>Match status: {lead.match?.status ?? "n/a"}</p>
+      <p>Matched fields: {formatMatchedFields(lead.match?.matched_fields)}</p>
+      {lead.match?.explanation?.length ? (
+        <ul className="activity-list compact-list">
+          {lead.match.explanation.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="result-links">
+        {obituaryLink ? (
+          <a href={obituaryLink} target="_blank" rel="noreferrer">
+            View raw obituary
+          </a>
+        ) : null}
+        {ownerLink ? (
+          <a href={ownerLink} target="_blank" rel="noreferrer">
+            View owner profile
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [status, setStatus] = useState(null);
   const [mapping, setMapping] = useState(null);
@@ -225,6 +288,7 @@ export default function DashboardPage() {
   const deliveryCount = status?.deliveries?.length ?? 0;
   const latestDelivery = status?.latest_delivery;
   const latestLeadSummary = latestDelivery?.summary ?? null;
+  const latestLead = lastRunSummary?.leads?.[0] ?? null;
 
   return (
     <main className="page dashboard-page">
@@ -449,6 +513,13 @@ export default function DashboardPage() {
               </li>
             ))}
           </ul>
+        </article>
+      </section>
+
+      <section className="grid dashboard-grid">
+        <article className="panel history-card">
+          <h2>Latest scan confidence</h2>
+          <LeadConfidenceCard lead={latestLead} />
         </article>
       </section>
     </main>

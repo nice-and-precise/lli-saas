@@ -20,6 +20,8 @@ class MatchCandidate:
         first_name_score: float,
         location_bonus_applied: bool,
         status: str,
+        matched_fields: list[str],
+        explanation: list[str],
     ) -> None:
         self.owner_record = owner_record
         self.score = score
@@ -27,6 +29,8 @@ class MatchCandidate:
         self.first_name_score = first_name_score
         self.location_bonus_applied = location_bonus_applied
         self.status = status
+        self.matched_fields = matched_fields
+        self.explanation = explanation
 
 
 def _normalize_name_token(value: str | None) -> str:
@@ -78,6 +82,15 @@ class NameMatcher:
             if score < 85:
                 continue
 
+            matched_fields = ["last_name", "first_name"]
+            explanation = [
+                f"Last name similarity scored {round(last_name_score, 2)} against owner record.",
+                f"First name similarity scored {round(first_name_score, 2)} after nickname expansion.",
+            ]
+            if location_bonus_applied:
+                matched_fields.append("location")
+                explanation.append("Location bonus applied because obituary and owner city/state aligned.")
+
             candidate = MatchCandidate(
                 owner_record=owner_record,
                 score=round(score, 2),
@@ -85,6 +98,8 @@ class NameMatcher:
                 first_name_score=round(first_name_score, 2),
                 location_bonus_applied=location_bonus_applied,
                 status="auto_confirmed" if score >= 95 else "pending_review",
+                matched_fields=matched_fields,
+                explanation=explanation,
             )
             if best is None or candidate.score > best.score:
                 best = candidate

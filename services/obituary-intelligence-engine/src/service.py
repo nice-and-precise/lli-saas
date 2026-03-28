@@ -10,6 +10,7 @@ from src.contracts import (
     LeadProperty,
     MatchMetadata,
     ObituaryEngineRunScanRequest,
+    OwnerRecord,
     ObituaryEngineScanResult,
     ObituaryMetadata,
 )
@@ -118,6 +119,8 @@ class ObituaryIntelligenceService:
                     first_name_score=match.first_name_score,
                     location_bonus_applied=match.location_bonus_applied,
                     status=match.status,
+                    matched_fields=match.matched_fields,
+                    explanation=match.explanation,
                 ),
                 tier=tier,
                 out_of_state_heir_likely=out_of_state_heir_likely,
@@ -131,6 +134,8 @@ class ObituaryIntelligenceService:
                     f"source:{obituary.source_id}",
                     f"owner:{match.owner_record.raw_source_ref or match.owner_record.owner_id}",
                 ],
+                owner_profile_url=self._build_owner_profile_url(match.owner_record),
+                obituary_raw_url=obituary.obituary_url,
             )
             leads.append(lead)
 
@@ -165,6 +170,13 @@ class ObituaryIntelligenceService:
         if score >= 95:
             return "hot" if out_of_state_heir_likely else "warm"
         return "pending_review" if score >= 85 else "low_signal"
+
+    def _build_owner_profile_url(self, owner_record: OwnerRecord) -> str | None:
+        if owner_record.raw_source_ref:
+            return f"lli://owner-profile/{owner_record.raw_source_ref}"
+        if owner_record.owner_id:
+            return f"lli://owner-profile/{owner_record.owner_id}"
+        return None
 
 
 @lru_cache(maxsize=1)

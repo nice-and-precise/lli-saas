@@ -78,6 +78,8 @@ def test_matcher_uses_nickname_expansion_and_location_bonus() -> None:
     assert match.score >= 95
     assert match.location_bonus_applied is True
     assert match.status == "auto_confirmed"
+    assert match.matched_fields == ["last_name", "first_name", "location"]
+    assert any("Location bonus applied" in item for item in match.explanation)
 
 
 def test_extractor_falls_back_to_heuristics_without_provider_keys(monkeypatch) -> None:
@@ -141,6 +143,9 @@ def test_service_builds_canonical_leads(tmp_path) -> None:
     assert lead.tier == "hot"
     assert lead.out_of_state_states == ["AZ"]
     assert lead.match.status == "auto_confirmed"
+    assert lead.match.matched_fields == ["last_name", "first_name", "location"]
+    assert lead.owner_profile_url == "lli://owner-profile/board:clients:item:owner-1"
+    assert lead.obituary_raw_url == "https://example.com/obit"
 
 
 def test_http_surface_exposes_run_scan(monkeypatch, tmp_path) -> None:

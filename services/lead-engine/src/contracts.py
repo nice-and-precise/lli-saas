@@ -68,6 +68,8 @@ class MatchMetadata(BaseModel):
     first_name_score: float
     location_bonus_applied: bool = False
     status: Literal["auto_confirmed", "pending_review"]
+    matched_fields: list[str] = Field(default_factory=list)
+    explanation: list[str] = Field(default_factory=list)
 
 
 class Lead(BaseModel):
@@ -92,6 +94,8 @@ class Lead(BaseModel):
     notes: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     raw_artifacts: list[str] = Field(default_factory=list)
+    owner_profile_url: str | None = None
+    obituary_raw_url: str | None = None
 
 
 class RunScanRequest(BaseModel):

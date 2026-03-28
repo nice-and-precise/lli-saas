@@ -89,6 +89,8 @@ def build_lead(**overrides) -> Lead:
             "first_name_score": 92.0,
             "location_bonus_applied": True,
             "status": "auto_confirmed",
+            "matched_fields": ["last_name", "first_name", "location"],
+            "explanation": ["Last name similarity scored 100.0 against owner record."],
         },
         "tier": "hot",
         "out_of_state_heir_likely": True,
@@ -98,6 +100,8 @@ def build_lead(**overrides) -> Lead:
         "notes": ["pilot-ready"],
         "tags": ["tier:hot"],
         "raw_artifacts": ["artifact-1.json"],
+        "owner_profile_url": "lli://owner-profile/board:clients:item:owner-1",
+        "obituary_raw_url": "https://example.com/obit",
     }
     payload.update(overrides)
     return Lead.model_validate(payload)
@@ -253,6 +257,8 @@ class StubObituaryEngine:
                         "first_name_score": 80.0,
                         "location_bonus_applied": False,
                         "status": "pending_review",
+                        "matched_fields": ["last_name", "first_name"],
+                        "explanation": ["First name similarity scored 80.0 after nickname expansion."],
                     },
                     out_of_state_heir_likely=False,
                     out_of_state_states=[],

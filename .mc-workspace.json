@@ -1,0 +1,12 @@
+{
+  "taskId": "771c3a38-f253-44c8-8b06-3e4d028fcdc7",
+  "productId": "512ad7b8-0cc7-43e9-a029-7aec7e094631",
+  "createdAt": "2026-03-28T17:38:49.123Z",
+  "strategy": "worktree",
+  "branch": "autopilot/pre-scan-monday-com-board-configuration-771c3a38",
+  "baseBranch": "main",
+  "baseCommit": "1a2ed639e6802903861f77c84f732b32a5b32622",
+  "status": "active",
+  "agentId": "86106c29-e2f3-49cd-ae85-caae72d71637",
+  "isolatedPort": 4202
+}

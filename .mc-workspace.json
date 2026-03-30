@@ -1,12 +1,12 @@
 {
-  "taskId": "300c411d-e84c-46da-a18e-04d70bbf86ff",
+  "taskId": "50b61248-318c-438f-9f9d-ce47cf0cab87",
   "productId": "512ad7b8-0cc7-43e9-a029-7aec7e094631",
-  "createdAt": "2026-03-30T20:14:19.032Z",
+  "createdAt": "2026-03-30T20:12:30.004Z",
   "strategy": "worktree",
-  "branch": "autopilot/automated-data-profiling-for-broker-prov-300c411d",
+  "branch": "autopilot/fuzzy-name-matching-algorithm-enhancemen-50b61248",
   "baseBranch": "main",
   "baseCommit": "ac2b3b194b860e3823bc162f492103b4f915a588",
   "status": "active",
   "agentId": "86106c29-e2f3-49cd-ae85-caae72d71637",
-  "isolatedPort": 4207
+  "isolatedPort": 4206
 }

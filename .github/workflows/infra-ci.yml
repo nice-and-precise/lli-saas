@@ -2,6 +2,7 @@ name: infra-ci
 # CI touch: keep workflow-triggered checks attached to integration commits.
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:

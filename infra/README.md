@@ -18,6 +18,7 @@ Infrastructure assets for the current `lli-saas` pilot deployment path.
 
 ## Pilot Notes
 
+- CI validates these assets with Helm rendering plus client-side `kubectl` dry-runs before merge.
 - `lead-engine`, `obituary-intelligence-engine`, and `crm-adapter` expose `/ready`.
 - `lead-engine` requires reachable `CRM_ADAPTER_BASE_URL` and `OBITUARY_ENGINE_BASE_URL`.
 - `crm-adapter` requires Monday OAuth configuration and writable mounted storage for file-backed pilot state.

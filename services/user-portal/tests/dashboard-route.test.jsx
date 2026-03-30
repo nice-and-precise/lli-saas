@@ -147,7 +147,58 @@ test("renders validation status, previews mapping edits, and runs the obituary s
         owner_count: 150,
         lead_count: 2,
         delivery_summary: { created: 2, skipped_duplicate: 0, failed: 0 },
-        leads: [],
+        leads: [
+          {
+            scan_id: "scan-2",
+            source: "obituary_intelligence_engine",
+            run_started_at: "2026-03-11T10:00:00Z",
+            run_completed_at: "2026-03-11T10:01:00Z",
+            owner_id: "owner-2",
+            owner_name: "Taylor Example",
+            deceased_name: "Taylor Example",
+            property: {
+              county: "Boone",
+              state: "IA",
+              acres: 120.5,
+              parcel_ids: ["parcel-2"],
+              address_line_1: "123 County Road",
+              city: "Boone",
+              postal_code: "50036",
+              operator_name: "Johnson Farms LLC",
+            },
+            heirs: [],
+            obituary: {
+              url: "https://example.com/obit-2",
+              source_id: "the_gazette",
+              published_at: "2026-03-11T11:00:00Z",
+              death_date: "2026-03-09",
+              deceased_city: "Ames",
+              deceased_state: "IA",
+            },
+            match: {
+              score: 89,
+              last_name_score: 96,
+              first_name_score: 80,
+              location_bonus_applied: false,
+              status: "pending_review",
+              matched_fields: ["last_name", "first_name"],
+              explanation: [
+                "Last name similarity scored 96.0 against owner record.",
+                "First name similarity scored 80.0 after nickname expansion.",
+              ],
+            },
+            tier: "pending_review",
+            out_of_state_heir_likely: false,
+            out_of_state_states: [],
+            executor_mentioned: false,
+            unexpected_death: false,
+            notes: [],
+            tags: ["tier:pending_review"],
+            raw_artifacts: ["artifact-1.json"],
+            owner_profile_url: "lli://owner-profile/board:clients:item:owner-2",
+            obituary_raw_url: "https://example.com/obit-2",
+          },
+        ],
         errors: [],
       });
     }
@@ -195,4 +246,9 @@ test("renders validation status, previews mapping edits, and runs the obituary s
       method: "POST",
     }),
   );
+  expect(screen.getByText(/confidence score:/i)).toBeInTheDocument();
+  expect(screen.getByText(/89.0%/i)).toBeInTheDocument();
+  expect(screen.getByText(/matched fields: last_name, first_name/i)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /view raw obituary/i })).toHaveAttribute("href", "https://example.com/obit-2");
+  expect(screen.getByRole("link", { name: /view owner profile/i })).toHaveAttribute("href", "lli://owner-profile/board:clients:item:owner-2");
 });

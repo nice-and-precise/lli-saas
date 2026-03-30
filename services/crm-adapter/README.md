@@ -37,10 +37,50 @@ The adapter persists tenant-aware Monday OAuth, selected destination board, boar
 
 ## Routes
 
+## Owner profiling report shape
+
+`POST /owners/profile` accepts:
+
+```json
+{
+  "dataset_name": "broker-upload-1",
+  "owner_records": [
+    {
+      "owner_id": "owner-1",
+      "owner_name": "Jordan Example",
+      "county": "Boone",
+      "state": "IA",
+      "acres": 120.5,
+      "parcel_ids": ["parcel-1"],
+      "mailing_state": "IA",
+      "mailing_city": "Boone",
+      "mailing_postal_code": "50036",
+      "property_address_line_1": "123 County Road",
+      "property_city": "Boone",
+      "property_postal_code": "50036",
+      "operator_name": "Johnson Farms LLC",
+      "crm_source": "monday",
+      "raw_source_ref": "board:clients:item:owner-1"
+    }
+  ]
+}
+```
+
+Response contract highlights:
+
+- `readiness`: `ready`, `review`, or `blocked`
+- `summary`: blocker / warning / info counts plus duplicate counts
+- `field_coverage`: completion metrics per schema field
+- `issues[]`: portal-renderable issue records with severity, code, message, affected record, field, and duplicate metadata when present
+
+The profiling rules live in `src/profilingConfig.js` and are intentionally config-driven so the LLI field policy can evolve without reworking the report contract.
+
+
 - `GET /auth/login` redirects to Monday OAuth.
 - `GET /auth/callback?code=...` exchanges the OAuth code and persists token state.
 - `GET /boards` discovers boards using the persisted OAuth token.
 - `GET /owners?limit=...` fetches owner records from the Monday `Clients` board and normalizes them into canonical `OwnerRecord[]`.
+- `POST /owners/profile` profiles broker-provided owner records against the LLI owner schema, severity-tiered field rules, cross-field consistency checks, and exact/fuzzy duplicate heuristics, then returns a structured JSON readiness report for the user portal.
 - `POST /boards/select` with `{ "board_id": "..." }` persists the selected destination board metadata.
 - `GET /mapping` returns the persisted board mapping for the selected destination board.
 - `PUT /mapping` persists a focused board mapping model for the selected destination board.

@@ -60,6 +60,16 @@ class ObituaryMetadata(BaseModel):
     deceased_state: str | None = None
 
 
+class MatchExplanationDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    component: str = Field(min_length=1)
+    score: float
+    weight: float
+    matched: bool
+    evidence: str = Field(min_length=1)
+
+
 class MatchMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -68,8 +78,10 @@ class MatchMetadata(BaseModel):
     first_name_score: float
     location_bonus_applied: bool = False
     status: Literal["auto_confirmed", "pending_review"]
+    confidence_band: Literal["high", "medium", "low"] | None = None
     matched_fields: list[str] = Field(default_factory=list)
     explanation: list[str] = Field(default_factory=list)
+    explanation_details: list[MatchExplanationDetail] = Field(default_factory=list)
 
 
 class Lead(BaseModel):

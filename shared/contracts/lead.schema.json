@@ -264,6 +264,18 @@
             "pending_review"
           ]
         },
+        "confidence_band": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            null
+          ]
+        },
         "matched_fields": {
           "type": "array",
           "items": {
@@ -274,6 +286,37 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "explanation_details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "component",
+              "score",
+              "weight",
+              "matched",
+              "evidence"
+            ],
+            "properties": {
+              "component": {
+                "type": "string"
+              },
+              "score": {
+                "type": "number"
+              },
+              "weight": {
+                "type": "number"
+              },
+              "matched": {
+                "type": "boolean"
+              },
+              "evidence": {
+                "type": "string"
+              }
+            }
           }
         }
       }

@@ -81,7 +81,11 @@ class ObituaryIntelligenceService:
             tier = self._resolve_tier(match.score, heirs, out_of_state_heir_likely)
             notes = [
                 f"Matched obituary source {obituary.source_label}.",
-                f"Weighted match score {match.score} with last name {match.last_name_score} and first name {match.first_name_score}.",
+                (
+                    f"Weighted match score {match.score} "
+                    f"({match.confidence_band or 'unbanded'}) with last name {match.last_name_score} "
+                    f"and first name {match.first_name_score}."
+                ),
             ]
             if obituary.out_of_state_heir_evidence:
                 notes.append(f"Out-of-state survivor signal: {obituary.out_of_state_heir_evidence}")
@@ -119,8 +123,10 @@ class ObituaryIntelligenceService:
                     first_name_score=match.first_name_score,
                     location_bonus_applied=match.location_bonus_applied,
                     status=match.status,
+                    confidence_band=match.confidence_band,
                     matched_fields=match.matched_fields,
                     explanation=match.explanation,
+                    explanation_details=match.explanation_details,
                 ),
                 tier=tier,
                 out_of_state_heir_likely=out_of_state_heir_likely,

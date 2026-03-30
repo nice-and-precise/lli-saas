@@ -80,6 +80,16 @@ const obituaryMetadataSchema = z
   })
   .strict();
 
+const matchExplanationDetailSchema = z
+  .object({
+    component: nonEmptyTrimmedString,
+    score: z.number(),
+    weight: z.number(),
+    matched: z.boolean(),
+    evidence: nonEmptyTrimmedString,
+  })
+  .strict();
+
 const matchMetadataSchema = z
   .object({
     score: z.number(),
@@ -87,6 +97,10 @@ const matchMetadataSchema = z
     first_name_score: z.number(),
     location_bonus_applied: z.boolean(),
     status: z.enum(["auto_confirmed", "pending_review"]),
+    confidence_band: z.enum(["high", "medium", "low"]).nullable().optional(),
+    matched_fields: z.array(z.string()).optional().default([]),
+    explanation: z.array(z.string()).optional().default([]),
+    explanation_details: z.array(matchExplanationDetailSchema).optional().default([]),
   })
   .strict();
 
@@ -111,6 +125,8 @@ const leadSchema = z
     notes: z.array(z.string()),
     tags: z.array(z.string()),
     raw_artifacts: z.array(z.string()),
+    owner_profile_url: nullableString.optional(),
+    obituary_raw_url: nullableString.optional(),
   })
   .strict();
 

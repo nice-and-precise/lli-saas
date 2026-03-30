@@ -1,4 +1,5 @@
 name: lead-engine-ci
+# CI touch: keep workflow-triggered checks attached to integration commits.
 
 on:
   push:

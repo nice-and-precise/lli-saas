@@ -1,0 +1,12 @@
+{
+  "taskId": "7b4ca458-00c3-45ae-a522-b67e748282ef",
+  "productId": "512ad7b8-0cc7-43e9-a029-7aec7e094631",
+  "createdAt": "2026-03-28T15:11:13.885Z",
+  "strategy": "worktree",
+  "branch": "autopilot/data-validation-with-pydantic-zod-for-le-7b4ca458",
+  "baseBranch": "main",
+  "baseCommit": "139766f26099e3ced42713a072fd37803dcef40c",
+  "status": "active",
+  "agentId": "66b90753-8bf4-43ae-8022-df25f12e1e0f",
+  "isolatedPort": 4200
+}

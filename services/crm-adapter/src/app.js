@@ -275,7 +275,10 @@ function createApp(options = {}) {
     } catch (error) {
       return {
         statusCode: 400,
-        body: { error: error.message },
+        body: {
+          error: error.message,
+          details: "Lead payload validation failed before Monday delivery",
+        },
       };
     }
 

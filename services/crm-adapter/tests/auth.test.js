@@ -203,6 +203,38 @@ describe("crm-adapter routes", () => {
     });
   });
 
+  it("rejects invalid lead payloads before Monday delivery", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi.fn(async () => []),
+      createItem: vi.fn(async () => ({ id: "item-1" })),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-invalid-lead-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", {
+      oauth: { access_token: "token-123", account_id: "acct-1" },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name", type: "text" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app)
+      .post("/leads")
+      .send(buildLead({ run_started_at: "bad-timestamp" }));
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({
+      error: "Invalid lead field: run_started_at",
+      details: "Lead payload validation failed before Monday delivery",
+    });
+    expect(mondayClient.listBoardItems).not.toHaveBeenCalled();
+    expect(mondayClient.createItem).not.toHaveBeenCalled();
+  });
+
   it("persists the selected destination board from discovered boards", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),

@@ -27,6 +27,13 @@ The adapter persists tenant-aware Monday OAuth, selected destination board, boar
 - Default item-name strategy: `deceased_name_county`
 - Duplicate identity: obituary URL first, then `{deceased_name, death_date, owner_id}` fallback
 
+## Lead Validation
+
+- Canonical inbound lead payloads are validated with Zod in `src/leadContract.js` before any Monday API reads or writes occur.
+- The schema mirrors the shared lead contract and enforces strict object shapes, enum values, ISO date/date-time strings, and required nested structures.
+- Validation failures return HTTP 400 with a field-specific error and skip Monday duplicate checks and item creation.
+- Recommended handling in production: log the tenant, scan ID, and failing field; preserve the rejected payload in structured logs or dead-letter storage; alert only on repeated validation failures, not one-off bad upstream records.
+
 ## Routes
 
 - `GET /auth/login` redirects to Monday OAuth.

@@ -19,7 +19,18 @@ assert_not_in_file() {
   local file="$2"
   local message="$3"
 
-  if rg -n -U "$pattern" "$file" >/dev/null; then
+  if python3 - "$pattern" "$file" <<'PY'
+import pathlib
+import re
+import sys
+
+pattern = sys.argv[1]
+path = pathlib.Path(sys.argv[2])
+text = path.read_text()
+
+sys.exit(0 if re.search(pattern, text, re.MULTILINE) else 1)
+PY
+  then
     echo "ERROR: ${message}" >&2
     exit 1
   fi
@@ -30,7 +41,18 @@ assert_in_file() {
   local file="$2"
   local message="$3"
 
-  if ! rg -n -U "$pattern" "$file" >/dev/null; then
+  if ! python3 - "$pattern" "$file" <<'PY'
+import pathlib
+import re
+import sys
+
+pattern = sys.argv[1]
+path = pathlib.Path(sys.argv[2])
+text = path.read_text()
+
+sys.exit(0 if re.search(pattern, text, re.MULTILINE) else 1)
+PY
+  then
     echo "ERROR: ${message}" >&2
     exit 1
   fi

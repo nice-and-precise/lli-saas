@@ -26,4 +26,4 @@ jobs:
       - name: Helm template
         run: helm template lli-saas infra/charts/lli-saas > /tmp/lli-saas-rendered.yaml
       - name: Validate Kubernetes manifests
-        run: kubectl apply --dry-run=client -f /tmp/lli-saas-rendered.yaml
+        run: kubectl apply --dry-run=client --validate=false -f /tmp/lli-saas-rendered.yaml

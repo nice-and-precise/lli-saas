@@ -28,7 +28,7 @@ jobs:
       - uses: azure/setup-helm@v4
       - uses: azure/setup-kubectl@v4
       - name: Install Poetry
-        run: pipx install poetry==2.1.1
+        run: pipx install poetry==2.3.2
       - name: Install crm-adapter deps
         working-directory: services/crm-adapter
         run: npm ci

@@ -10,6 +10,15 @@ services:
       requests:
         cpu: 250m
         memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
     probes:
       enabled: true
       path: /ready
@@ -27,6 +36,15 @@ services:
       requests:
         cpu: 250m
         memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
     probes:
       enabled: true
       path: /ready

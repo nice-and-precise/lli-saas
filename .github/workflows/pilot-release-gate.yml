@@ -1,4 +1,5 @@
 name: pilot-release-gate
+# CI touch: keep workflow-triggered checks attached to integration commits.
 
 on:
   workflow_dispatch:
@@ -28,7 +29,7 @@ jobs:
       - uses: azure/setup-helm@v4
       - uses: azure/setup-kubectl@v4
       - name: Install Poetry
-        run: pipx install poetry==2.1.1
+        run: pipx install poetry==2.3.2
       - name: Install crm-adapter deps
         working-directory: services/crm-adapter
         run: npm ci
@@ -37,6 +38,9 @@ jobs:
         run: npm ci
       - name: Install lead-engine deps
         working-directory: services/lead-engine
+        run: poetry install
+      - name: Install obituary-intelligence-engine deps
+        working-directory: services/obituary-intelligence-engine
         run: poetry install
       - name: Run pilot release gate
         run: bash scripts/pilot-readiness-check.sh

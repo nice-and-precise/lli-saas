@@ -1,10 +1,11 @@
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.app import app
 from src.collector import ObituaryCollector, ObituaryRecord
-from src.contracts import ObituaryEngineRunScanRequest, OwnerRecord
+from src.contracts import Lead, ObituaryEngineRunScanRequest, OwnerRecord
 from src.extractor import HeirExtractor
 from src.matcher import NameMatcher, NicknameIndex
 from src.normalization import canonicalize_url, detect_out_of_state_survivor_states, has_survivor_signal
@@ -78,6 +79,8 @@ def test_matcher_uses_nickname_expansion_and_location_bonus() -> None:
     assert match.score >= 95
     assert match.location_bonus_applied is True
     assert match.status == "auto_confirmed"
+    assert match.matched_fields == ["last_name", "first_name", "location"]
+    assert any("Location bonus applied" in item for item in match.explanation)
 
 
 def test_extractor_falls_back_to_heuristics_without_provider_keys(monkeypatch) -> None:
@@ -141,6 +144,58 @@ def test_service_builds_canonical_leads(tmp_path) -> None:
     assert lead.tier == "hot"
     assert lead.out_of_state_states == ["AZ"]
     assert lead.match.status == "auto_confirmed"
+    assert lead.match.matched_fields == ["last_name", "first_name", "location"]
+    assert lead.owner_profile_url == "lli://owner-profile/board:clients:item:owner-1"
+    assert lead.obituary_raw_url == "https://example.com/obit"
+
+
+def test_pydantic_lead_validation_rejects_invalid_contract_values() -> None:
+    with pytest.raises(Exception):
+        Lead.model_validate(
+            {
+                "scan_id": "scan-1",
+                "source": "obituary_intelligence_engine",
+                "run_started_at": "not-a-timestamp",
+                "run_completed_at": "2026-03-11T10:01:00Z",
+                "owner_id": "owner-1",
+                "owner_name": "Jordan Example",
+                "deceased_name": "Pat Example",
+                "property": {
+                    "county": "Boone",
+                    "state": "IA",
+                    "acres": 120.5,
+                    "parcel_ids": ["parcel-1"],
+                    "address_line_1": "123 County Road",
+                    "city": "Boone",
+                    "postal_code": "50036",
+                    "operator_name": "Johnson Farms LLC",
+                },
+                "heirs": [],
+                "obituary": {
+                    "url": "notaurl",
+                    "source_id": "kwbg_boone",
+                    "published_at": "2026-03-11T10:00:00Z",
+                    "death_date": "2026-03-10",
+                    "deceased_city": "Boone",
+                    "deceased_state": "IA",
+                },
+                "match": {
+                    "score": 96.2,
+                    "last_name_score": 100,
+                    "first_name_score": 90.5,
+                    "location_bonus_applied": True,
+                    "status": "auto_confirmed",
+                },
+                "tier": "hot",
+                "out_of_state_heir_likely": False,
+                "out_of_state_states": [],
+                "executor_mentioned": False,
+                "unexpected_death": False,
+                "notes": [],
+                "tags": [],
+                "raw_artifacts": [],
+            }
+        )
 
 
 def test_http_surface_exposes_run_scan(monkeypatch, tmp_path) -> None:

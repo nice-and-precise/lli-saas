@@ -88,6 +88,17 @@ describe("lead contract helpers", () => {
     ).toThrow("Invalid lead field: scan_id");
   });
 
+  it("rejects invalid lead timestamps and enum values via zod", () => {
+    expect(() =>
+      validateLead(
+        buildLead({
+          run_started_at: "not-a-timestamp",
+          tier: "urgent",
+        }),
+      ),
+    ).toThrow("Invalid lead field: run_started_at");
+  });
+
   it("accepts partial board mappings", () => {
     expect(
       validateBoardMapping({

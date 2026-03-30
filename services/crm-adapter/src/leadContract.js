@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { z } = require("zod");
 
 const LEAD_SCHEMA_PATH_CANDIDATES = [
   path.resolve(__dirname, "..", "..", "..", "shared", "contracts", "lead.schema.json"),
@@ -35,110 +36,150 @@ const ALLOWED_MAPPED_FIELDS = new Set([
   "source",
 ]);
 
+const nonEmptyTrimmedString = z.string().trim().min(1);
+const nullableString = z.string().nullable();
+const nullableTrimmedString = z.string().trim().min(1).nullable();
+const isoDateTimeString = z.string().datetime({ offset: true });
+const isoDateString = z.string().date();
+
+const heirRecordSchema = z
+  .object({
+    name: nonEmptyTrimmedString,
+    relationship: nonEmptyTrimmedString,
+    location_city: nullableString,
+    location_state: nullableString,
+    out_of_state: z.boolean(),
+    phone: nullableString,
+    email: nullableString,
+    mailing_address: nullableString,
+    executor: z.boolean(),
+  })
+  .strict();
+
+const leadPropertySchema = z
+  .object({
+    county: nullableString,
+    state: nullableString,
+    acres: z.number().nullable(),
+    parcel_ids: z.array(z.string()),
+    address_line_1: nullableString,
+    city: nullableString,
+    postal_code: nullableString,
+    operator_name: nullableString,
+  })
+  .strict();
+
+const obituaryMetadataSchema = z
+  .object({
+    url: nonEmptyTrimmedString,
+    source_id: nonEmptyTrimmedString,
+    published_at: isoDateTimeString.nullable(),
+    death_date: isoDateString.nullable(),
+    deceased_city: nullableString,
+    deceased_state: nullableString,
+  })
+  .strict();
+
+const matchMetadataSchema = z
+  .object({
+    score: z.number(),
+    last_name_score: z.number(),
+    first_name_score: z.number(),
+    location_bonus_applied: z.boolean(),
+    status: z.enum(["auto_confirmed", "pending_review"]),
+  })
+  .strict();
+
+const leadSchema = z
+  .object({
+    scan_id: nonEmptyTrimmedString,
+    source: nonEmptyTrimmedString,
+    run_started_at: isoDateTimeString,
+    run_completed_at: isoDateTimeString,
+    owner_id: nonEmptyTrimmedString,
+    owner_name: nonEmptyTrimmedString,
+    deceased_name: nonEmptyTrimmedString,
+    property: leadPropertySchema,
+    heirs: z.array(heirRecordSchema),
+    obituary: obituaryMetadataSchema,
+    match: matchMetadataSchema,
+    tier: z.enum(["hot", "warm", "pending_review", "low_signal"]),
+    out_of_state_heir_likely: z.boolean(),
+    out_of_state_states: z.array(z.string()),
+    executor_mentioned: z.boolean(),
+    unexpected_death: z.boolean(),
+    notes: z.array(z.string()),
+    tags: z.array(z.string()),
+    raw_artifacts: z.array(z.string()),
+  })
+  .strict();
+
+const boardMappingSchema = z
+  .object({
+    item_name_strategy: z.enum([
+      "deceased_name_county",
+      "deceased_name_only",
+      "deceased_name_address",
+    ]),
+    columns: z.record(nonEmptyTrimmedString, nonEmptyTrimmedString),
+  })
+  .strict()
+  .superRefine((mapping, ctx) => {
+    const seenColumnIds = new Set();
+
+    Object.entries(mapping.columns).forEach(([field, columnId]) => {
+      if (!ALLOWED_MAPPED_FIELDS.has(field)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid board mapping field: columns.${field}`,
+          path: ["columns", field],
+        });
+        return;
+      }
+
+      if (seenColumnIds.has(columnId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate board mapping column id: ${columnId}`,
+          path: ["columns", field],
+        });
+        return;
+      }
+
+      seenColumnIds.add(columnId);
+    });
+  });
+
 function getLeadSchemaPath() {
   const existingPath = LEAD_SCHEMA_PATH_CANDIDATES.find((candidate) => fs.existsSync(candidate));
   return existingPath ?? LEAD_SCHEMA_PATH_CANDIDATES[0];
 }
 
-function assertNonEmptyString(value, field) {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`Invalid lead field: ${field}`);
+function formatZodError(prefix, error) {
+  const firstIssue = error.issues?.[0];
+  if (!firstIssue) {
+    return prefix;
   }
-}
 
-function assertOptionalString(value, field) {
-  if (value != null && typeof value !== "string") {
-    throw new Error(`Invalid lead field: ${field}`);
+  const pathText = firstIssue.path?.length ? firstIssue.path.join(".") : null;
+  if (!pathText) {
+    return `${prefix}: ${firstIssue.message}`;
   }
+
+  if (firstIssue.message.startsWith("Invalid board mapping field:")) {
+    return firstIssue.message;
+  }
+
+  return `${prefix}: ${pathText}`;
 }
 
 function validateLead(lead) {
-  if (!lead || typeof lead !== "object" || Array.isArray(lead)) {
-    throw new Error("Invalid lead payload");
+  const result = leadSchema.safeParse(lead);
+  if (!result.success) {
+    throw new Error(formatZodError("Invalid lead field", result.error));
   }
 
-  [
-    "scan_id",
-    "source",
-    "run_started_at",
-    "run_completed_at",
-    "owner_id",
-    "owner_name",
-    "deceased_name",
-  ].forEach((field) => assertNonEmptyString(lead[field], field));
-
-  if (!lead.property || typeof lead.property !== "object" || Array.isArray(lead.property)) {
-    throw new Error("Invalid lead field: property");
-  }
-
-  ["county", "state", "address_line_1", "city", "postal_code", "operator_name"].forEach((field) =>
-    assertOptionalString(lead.property[field], `property.${field}`),
-  );
-  if (lead.property.acres != null && typeof lead.property.acres !== "number") {
-    throw new Error("Invalid lead field: property.acres");
-  }
-  if (!Array.isArray(lead.property.parcel_ids)) {
-    throw new Error("Invalid lead field: property.parcel_ids");
-  }
-
-  if (!Array.isArray(lead.heirs)) {
-    throw new Error("Invalid lead field: heirs");
-  }
-
-  lead.heirs.forEach((heir, index) => {
-    if (!heir || typeof heir !== "object" || Array.isArray(heir)) {
-      throw new Error(`Invalid lead heir at index ${index}`);
-    }
-
-    ["name", "relationship"].forEach((field) =>
-      assertNonEmptyString(heir[field], `heirs[${index}].${field}`),
-    );
-    ["location_city", "location_state", "phone", "email", "mailing_address"].forEach((field) =>
-      assertOptionalString(heir[field], `heirs[${index}].${field}`),
-    );
-    ["out_of_state", "executor"].forEach((field) => {
-      if (typeof heir[field] !== "boolean") {
-        throw new Error(`Invalid lead field: heirs[${index}].${field}`);
-      }
-    });
-  });
-
-  if (!lead.obituary || typeof lead.obituary !== "object" || Array.isArray(lead.obituary)) {
-    throw new Error("Invalid lead field: obituary");
-  }
-  ["url", "source_id"].forEach((field) => assertNonEmptyString(lead.obituary[field], `obituary.${field}`));
-  ["published_at", "death_date", "deceased_city", "deceased_state"].forEach((field) =>
-    assertOptionalString(lead.obituary[field], `obituary.${field}`),
-  );
-
-  if (!lead.match || typeof lead.match !== "object" || Array.isArray(lead.match)) {
-    throw new Error("Invalid lead field: match");
-  }
-  ["score", "last_name_score", "first_name_score"].forEach((field) => {
-    if (typeof lead.match[field] !== "number") {
-      throw new Error(`Invalid lead field: match.${field}`);
-    }
-  });
-  if (typeof lead.match.location_bonus_applied !== "boolean") {
-    throw new Error("Invalid lead field: match.location_bonus_applied");
-  }
-  assertNonEmptyString(lead.match.status, "match.status");
-
-  ["tier"].forEach((field) => assertNonEmptyString(lead[field], field));
-  ["out_of_state_heir_likely", "executor_mentioned", "unexpected_death"].forEach((field) => {
-    if (typeof lead[field] !== "boolean") {
-      throw new Error(`Invalid lead field: ${field}`);
-    }
-  });
-  if (!Array.isArray(lead.out_of_state_states)) {
-    throw new Error("Invalid lead field: out_of_state_states");
-  }
-
-  if (!Array.isArray(lead.notes) || !Array.isArray(lead.tags) || !Array.isArray(lead.raw_artifacts)) {
-    throw new Error("Invalid lead list fields");
-  }
-
-  return lead;
+  return result.data;
 }
 
 function formatPropertyAddress(property) {
@@ -180,34 +221,12 @@ function buildItemName(lead, itemNameStrategy) {
 }
 
 function validateBoardMapping(mapping) {
-  if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
-    throw new Error("Invalid board mapping payload");
+  const result = boardMappingSchema.safeParse(mapping);
+  if (!result.success) {
+    throw new Error(formatZodError("Invalid board mapping payload", result.error));
   }
 
-  assertNonEmptyString(mapping.item_name_strategy, "item_name_strategy");
-  if (!ALLOWED_ITEM_NAME_STRATEGIES.has(mapping.item_name_strategy)) {
-    throw new Error("Invalid board mapping field: item_name_strategy");
-  }
-
-  if (!mapping.columns || typeof mapping.columns !== "object" || Array.isArray(mapping.columns)) {
-    throw new Error("Invalid board mapping field: columns");
-  }
-
-  const seenColumnIds = new Set();
-
-  Object.entries(mapping.columns).forEach(([field, columnId]) => {
-    assertNonEmptyString(field, `columns.${field}.field`);
-    if (!ALLOWED_MAPPED_FIELDS.has(field)) {
-      throw new Error(`Invalid board mapping field: columns.${field}`);
-    }
-    assertNonEmptyString(columnId, `columns.${field}`);
-    if (seenColumnIds.has(columnId)) {
-      throw new Error(`Duplicate board mapping column id: ${columnId}`);
-    }
-    seenColumnIds.add(columnId);
-  });
-
-  return mapping;
+  return result.data;
 }
 
 function normalizeMappedValue(value, field, columnType) {
@@ -243,38 +262,38 @@ function normalizeMappedValue(value, field, columnType) {
 }
 
 function mapLeadToMondayItemWithMapping(lead, mapping, boardColumns = []) {
-  validateLead(lead);
-  validateBoardMapping(mapping);
+  const validatedLead = validateLead(lead);
+  const validatedMapping = validateBoardMapping(mapping);
 
-  const itemName = buildItemName(lead, mapping.item_name_strategy);
+  const itemName = buildItemName(validatedLead, validatedMapping.item_name_strategy);
   const summary = {
-    deceased_name: lead.deceased_name,
-    owner_name: lead.owner_name,
-    owner_id: lead.owner_id,
-    property_address: formatPropertyAddress(lead.property),
-    county: lead.property.county ?? "",
-    acres: lead.property.acres,
-    operator_name: lead.property.operator_name ?? "",
-    death_date: lead.obituary.death_date ?? "",
-    obituary_source: lead.obituary.source_id,
-    obituary_url: lead.obituary.url,
-    match_score: lead.match.score,
-    match_status: lead.match.status,
-    tier: lead.tier,
-    heir_count: lead.heirs.length,
-    heirs_formatted: formatHeirs(lead.heirs),
-    out_of_state_heir_likely: lead.out_of_state_heir_likely,
-    out_of_state_states: lead.out_of_state_states,
-    executor_mentioned: lead.executor_mentioned,
-    unexpected_death: lead.unexpected_death,
-    tags: lead.tags,
-    scan_id: lead.scan_id,
-    source: lead.source,
+    deceased_name: validatedLead.deceased_name,
+    owner_name: validatedLead.owner_name,
+    owner_id: validatedLead.owner_id,
+    property_address: formatPropertyAddress(validatedLead.property),
+    county: validatedLead.property.county ?? "",
+    acres: validatedLead.property.acres,
+    operator_name: validatedLead.property.operator_name ?? "",
+    death_date: validatedLead.obituary.death_date ?? "",
+    obituary_source: validatedLead.obituary.source_id,
+    obituary_url: validatedLead.obituary.url,
+    match_score: validatedLead.match.score,
+    match_status: validatedLead.match.status,
+    tier: validatedLead.tier,
+    heir_count: validatedLead.heirs.length,
+    heirs_formatted: formatHeirs(validatedLead.heirs),
+    out_of_state_heir_likely: validatedLead.out_of_state_heir_likely,
+    out_of_state_states: validatedLead.out_of_state_states,
+    executor_mentioned: validatedLead.executor_mentioned,
+    unexpected_death: validatedLead.unexpected_death,
+    tags: validatedLead.tags,
+    scan_id: validatedLead.scan_id,
+    source: validatedLead.source,
   };
   const columnTypes = new Map((boardColumns ?? []).map((column) => [column.id, column.type]));
 
   const columnValues = Object.fromEntries(
-    Object.entries(mapping.columns)
+    Object.entries(validatedMapping.columns)
       .map(([field, columnId]) => {
         const normalizedValue = normalizeMappedValue(summary[field], field, columnTypes.get(columnId));
         if (normalizedValue == null || normalizedValue === "") {
@@ -293,7 +312,9 @@ function mapLeadToMondayItemWithMapping(lead, mapping, boardColumns = []) {
 }
 
 module.exports = {
+  boardMappingSchema,
   getLeadSchemaPath,
+  leadSchema,
   mapLeadToMondayItemWithMapping,
   validateBoardMapping,
   validateLead,

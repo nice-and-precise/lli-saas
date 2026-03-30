@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 
 import { getRequiredServiceBaseUrl } from "../runtimeConfig";
 
@@ -75,17 +75,121 @@ function buildInitialMappingDraft(mapping) {
   };
 }
 
+function getIssueTone(severity) {
+  if (severity === "error") {
+    return "validation-issue error";
+  }
+  if (severity === "warning") {
+    return "validation-issue warning";
+  }
+  return "validation-issue info";
+}
+
+function formatIssueCount(summary) {
+  const errors = summary?.error_count ?? 0;
+  const warnings = summary?.warning_count ?? 0;
+  return `${errors} error${errors === 1 ? "" : "s"} · ${warnings} warning${warnings === 1 ? "" : "s"}`;
+}
+
+function applySuggestionsToDraft(currentDraft, suggestions = []) {
+  const nextDraft = {
+    ...currentDraft,
+    columns: {
+      ...currentDraft.columns,
+    },
+  };
+
+  for (const suggestion of suggestions) {
+    if (suggestion?.action?.kind !== "set_mapping_column") {
+      continue;
+    }
+    if (!suggestion.action.field || !suggestion.action.value) {
+      continue;
+    }
+
+    nextDraft.columns[suggestion.action.field] = suggestion.action.value;
+  }
+
+  return nextDraft;
+}
+
+function formatPercent(value) {
+  if (value == null || Number.isNaN(Number(value))) {
+    return "n/a";
+  }
+  return `${Number(value).toFixed(1)}%`;
+}
+
+function formatMatchedFields(fields = []) {
+  if (!fields.length) {
+    return "Not available";
+  }
+  return fields.join(", ");
+}
+
+function buildOwnerLink(lead) {
+  return lead?.owner_profile_url ?? null;
+}
+
+function buildObituaryLink(lead) {
+  return lead?.obituary_raw_url ?? lead?.obituary?.url ?? null;
+}
+
+function LeadConfidenceCard({ lead }) {
+  if (!lead) {
+    return <p>No scan result details yet.</p>;
+  }
+
+  const obituaryLink = buildObituaryLink(lead);
+  const ownerLink = buildOwnerLink(lead);
+
+  return (
+    <div className="scan-result-card">
+      <p className="lead-title">{lead.deceased_name}</p>
+      <p>Owner: {lead.owner_name}</p>
+      <p>Tier: {lead.tier}</p>
+      <p>
+        Confidence score: <strong>{formatPercent(lead.match?.score)}</strong>
+      </p>
+      <p>Match status: {lead.match?.status ?? "n/a"}</p>
+      <p>Matched fields: {formatMatchedFields(lead.match?.matched_fields)}</p>
+      {lead.match?.explanation?.length ? (
+        <ul className="activity-list compact-list">
+          {lead.match.explanation.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="result-links">
+        {obituaryLink ? (
+          <a href={obituaryLink} target="_blank" rel="noreferrer">
+            View raw obituary
+          </a>
+        ) : null}
+        {ownerLink ? (
+          <a href={ownerLink} target="_blank" rel="noreferrer">
+            View owner profile
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [status, setStatus] = useState(null);
   const [mapping, setMapping] = useState(null);
   const [mappingDraft, setMappingDraft] = useState(buildInitialMappingDraft(null));
   const [boards, setBoards] = useState([]);
   const [selectedBoardId, setSelectedBoardId] = useState("");
+  const [validation, setValidation] = useState(null);
+  const [lastAppliedCorrectionDraft, setLastAppliedCorrectionDraft] = useState(null);
   const [form, setForm] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(true);
   const [runningScan, setRunningScan] = useState(false);
   const [savingBoard, setSavingBoard] = useState(false);
   const [savingMapping, setSavingMapping] = useState(false);
+  const [applyingCorrections, setApplyingCorrections] = useState(false);
   const [error, setError] = useState("");
   const [lastRunSummary, setLastRunSummary] = useState(null);
 
@@ -95,10 +199,11 @@ export default function DashboardPage() {
 
     try {
       const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
-      const [statusPayload, mappingResult, boardsResult] = await Promise.allSettled([
+      const [statusPayload, mappingResult, boardsResult, validationResult] = await Promise.allSettled([
         fetchJson(crmAdapterBaseUrl, "/status"),
         fetchJson(crmAdapterBaseUrl, "/mapping"),
         fetchJson(crmAdapterBaseUrl, "/boards"),
+        fetchJson(crmAdapterBaseUrl, "/validation"),
       ]);
 
       if (statusPayload.status !== "fulfilled") {
@@ -113,11 +218,13 @@ export default function DashboardPage() {
         startTransition(() => {
           setMapping(mappingResult.value);
           setMappingDraft(buildInitialMappingDraft(mappingResult.value.mapping));
+          setLastAppliedCorrectionDraft(null);
         });
       } else {
         startTransition(() => {
           setMapping(null);
           setMappingDraft(buildInitialMappingDraft(null));
+          setLastAppliedCorrectionDraft(null);
         });
       }
 
@@ -130,6 +237,16 @@ export default function DashboardPage() {
         startTransition(() => {
           setBoards([]);
           setSelectedBoardId(statusPayload.value.board?.id ?? "");
+        });
+      }
+
+      if (validationResult.status === "fulfilled") {
+        startTransition(() => {
+          setValidation(validationResult.value);
+        });
+      } else {
+        startTransition(() => {
+          setValidation(null);
         });
       }
     } catch (requestError) {
@@ -145,6 +262,11 @@ export default function DashboardPage() {
 
   async function handleRunScan(event) {
     event.preventDefault();
+    if (!validation?.can_start_scan) {
+      setError("Fix validator errors before running scan.");
+      return;
+    }
+
     setRunningScan(true);
     setError("");
 
@@ -181,9 +303,12 @@ export default function DashboardPage() {
     setError("");
     try {
       const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
-      await fetchJson(crmAdapterBaseUrl, "/boards/select", {
+      const result = await fetchJson(crmAdapterBaseUrl, "/boards/select", {
         method: "POST",
         body: JSON.stringify({ board_id: selectedBoardId }),
+      });
+      startTransition(() => {
+        setValidation(result.validation ?? null);
       });
       await refreshDashboard();
     } catch (requestError) {
@@ -193,27 +318,40 @@ export default function DashboardPage() {
     }
   }
 
+  async function persistMappingDraft(nextDraft, options = {}) {
+    const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
+    const payload = {
+      item_name_strategy: nextDraft.item_name_strategy,
+      columns: Object.fromEntries(
+        Object.entries(nextDraft.columns).filter(([, value]) => value.trim() !== ""),
+      ),
+    };
+    const result = await fetchJson(crmAdapterBaseUrl, "/mapping", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+
+    startTransition(() => {
+      setMapping(result);
+      setMappingDraft(buildInitialMappingDraft(result.mapping));
+      setValidation(result.validation ?? null);
+      if (options.rememberPreviousDraft) {
+        setLastAppliedCorrectionDraft(options.rememberPreviousDraft);
+      } else if (!options.keepUndoState) {
+        setLastAppliedCorrectionDraft(null);
+      }
+    });
+
+    return result;
+  }
+
   async function handleMappingSave(event) {
     event.preventDefault();
     setSavingMapping(true);
     setError("");
 
     try {
-      const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
-      const payload = {
-        item_name_strategy: mappingDraft.item_name_strategy,
-        columns: Object.fromEntries(
-          Object.entries(mappingDraft.columns).filter(([, value]) => value.trim() !== ""),
-        ),
-      };
-      const result = await fetchJson(crmAdapterBaseUrl, "/mapping", {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
-      startTransition(() => {
-        setMapping(result);
-        setMappingDraft(buildInitialMappingDraft(result.mapping));
-      });
+      await persistMappingDraft(mappingDraft);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -221,10 +359,61 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleApplyConfidentCorrections() {
+    const confidentSuggestions = (validation?.suggestions ?? []).filter(
+      (suggestion) => suggestion.confidence === "high" && suggestion.action?.kind === "set_mapping_column",
+    );
+
+    if (confidentSuggestions.length === 0) {
+      return;
+    }
+
+    setApplyingCorrections(true);
+    setError("");
+
+    const previousDraft = {
+      ...mappingDraft,
+      columns: {
+        ...mappingDraft.columns,
+      },
+    };
+    const correctedDraft = applySuggestionsToDraft(previousDraft, confidentSuggestions);
+
+    try {
+      await persistMappingDraft(correctedDraft, {
+        rememberPreviousDraft: previousDraft,
+      });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setApplyingCorrections(false);
+    }
+  }
+
+  function handleUndoCorrections() {
+    if (!lastAppliedCorrectionDraft) {
+      return;
+    }
+
+    startTransition(() => {
+      setMappingDraft(lastAppliedCorrectionDraft);
+      setLastAppliedCorrectionDraft(null);
+    });
+  }
+
   const selectedBoard = status?.board?.name ?? "No destination board selected";
   const deliveryCount = status?.deliveries?.length ?? 0;
   const latestDelivery = status?.latest_delivery;
   const latestLeadSummary = latestDelivery?.summary ?? null;
+  const confidentSuggestions = useMemo(
+    () =>
+      (validation?.suggestions ?? []).filter(
+        (suggestion) => suggestion.confidence === "high" && suggestion.action?.kind === "set_mapping_column",
+      ),
+    [validation],
+  );
+  const scanBlocked = !validation?.can_start_scan;
+  const latestLead = lastRunSummary?.leads?.[0] ?? null;
 
   return (
     <main className="page dashboard-page">
@@ -260,6 +449,109 @@ export default function DashboardPage() {
           <p>{error}</p>
         </section>
       ) : null}
+
+      <section className="grid dashboard-grid validation-grid">
+        <article className="panel validation-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Monday.com guardrail</p>
+              <h2>Pre-scan validator</h2>
+            </div>
+            <p className={`status ${validation?.ready ? "ready" : "offline"}`}>
+              {loading ? "Loading" : validation?.ready ? "Ready for scan" : "Needs review"}
+            </p>
+          </div>
+
+          <div className="validation-summary-row">
+            <div>
+              <strong>{formatIssueCount(validation?.summary)}</strong>
+              <span>
+                {validation?.preview ? "Preview only" : "Live configuration"}
+              </span>
+            </div>
+            <div>
+              <strong>{validation?.state?.mapping?.mapped_field_count ?? 0}</strong>
+              <span>mapped fields</span>
+            </div>
+            <div>
+              <strong>{validation?.state?.selected_board?.name ?? "No board"}</strong>
+              <span>destination</span>
+            </div>
+          </div>
+
+          <div className="capability-grid">
+            <div className={`capability-chip ${validation?.capabilities?.token_present ? "good" : "bad"}`}>
+              Token {validation?.capabilities?.token_present ? "present" : "missing"}
+            </div>
+            <div className={`capability-chip ${validation?.capabilities?.monday_api_reachable ? "good" : "bad"}`}>
+              Monday API {validation?.capabilities?.monday_api_reachable ? "reachable" : "offline"}
+            </div>
+            <div className={`capability-chip ${validation?.capabilities?.source_board_readable ? "good" : "bad"}`}>
+              Source board {validation?.capabilities?.source_board_readable ? "readable" : "blocked"}
+            </div>
+            <div
+              className={`capability-chip ${validation?.capabilities?.destination_board_readable ? "good" : "bad"}`}
+            >
+              Destination board {validation?.capabilities?.destination_board_readable ? "readable" : "blocked"}
+            </div>
+          </div>
+
+          {confidentSuggestions.length > 0 ? (
+            <div className="correction-bar">
+              <button type="button" onClick={handleApplyConfidentCorrections} disabled={applyingCorrections}>
+                {applyingCorrections
+                  ? "Applying fixes..."
+                  : `Apply ${confidentSuggestions.length} confident fix${confidentSuggestions.length === 1 ? "" : "es"}`}
+              </button>
+              <p>
+                High-confidence mapping corrections are safe to apply automatically and can still be reviewed.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="validation-layout">
+            <div>
+              <h3>Issues</h3>
+              <ul className="validation-list">
+                {(validation?.issues ?? []).length > 0 ? (
+                  validation.issues.map((issue) => (
+                    <li key={`${issue.code}-${issue.field ?? issue.scope}-${issue.column_id ?? "none"}`} className={getIssueTone(issue.severity)}>
+                      <strong>{issue.field ?? issue.scope}</strong>
+                      <span>{issue.message}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="validation-issue success">
+                    <strong>No blocking issues</strong>
+                    <span>Board access, credentials, and mapping all passed validation.</span>
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            <div>
+              <h3>Suggested corrections</h3>
+              <ul className="validation-list suggestion-list">
+                {(validation?.suggestions ?? []).length > 0 ? (
+                  validation.suggestions.map((suggestion) => (
+                    <li key={suggestion.id} className="validation-issue suggestion">
+                      <strong>
+                        {suggestion.field ?? suggestion.scope} · {suggestion.confidence}
+                      </strong>
+                      <span>{suggestion.message}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="validation-issue info">
+                    <strong>No suggestions pending</strong>
+                    <span>The current Monday configuration does not need automatic correction hints.</span>
+                  </li>
+                )}
+              </ul>
+            </div>
+          </div>
+        </article>
+      </section>
 
       <section className="grid dashboard-grid">
         <article className="panel status-card">
@@ -318,8 +610,12 @@ export default function DashboardPage() {
                 onChange={(event) => setForm((current) => ({ ...current, source_ids: event.target.value }))}
               />
             </label>
-            <button type="submit" disabled={runningScan}>
-              {runningScan ? "Running scan..." : "Run obituary scan"}
+            <button type="submit" disabled={runningScan || scanBlocked}>
+              {runningScan
+                ? "Running scan..."
+                : scanBlocked
+                  ? "Fix validator errors before running scan"
+                  : "Run obituary scan"}
             </button>
           </form>
           <p className="subtle">
@@ -362,7 +658,14 @@ export default function DashboardPage() {
         </article>
 
         <article className="panel mapping-editor-card">
-          <h2>Mapping editor</h2>
+          <div className="section-heading">
+            <h2>Mapping editor</h2>
+            {lastAppliedCorrectionDraft ? (
+              <button type="button" className="secondary-button" onClick={handleUndoCorrections}>
+                Revert auto-fixes
+              </button>
+            ) : null}
+          </div>
           <form className="auth-form mapping-form" onSubmit={handleMappingSave}>
             <label>
               Item name strategy
@@ -449,6 +752,13 @@ export default function DashboardPage() {
               </li>
             ))}
           </ul>
+        </article>
+      </section>
+
+      <section className="grid dashboard-grid">
+        <article className="panel history-card">
+          <h2>Latest scan confidence</h2>
+          <LeadConfidenceCard lead={latestLead} />
         </article>
       </section>
     </main>

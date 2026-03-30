@@ -1,4 +1,5 @@
 name: lead-engine-ci
+# CI touch: keep workflow-triggered checks attached to integration commits.
 
 on:
   push:
@@ -23,7 +24,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install Poetry
-        run: pipx install poetry==2.1.1
+        run: pipx install poetry==2.3.2
       - name: Install dependencies
         working-directory: services/lead-engine
         run: poetry install
@@ -51,8 +52,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: services/lead-engine
+          context: .
+          file: services/lead-engine/Dockerfile
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-

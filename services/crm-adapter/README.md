@@ -18,7 +18,7 @@ Express Monday adapter for OAuth, source-owner fetch, destination-board mapping,
 - `CRM_ADAPTER_STATE_PATH` (optional, defaults to `/var/lib/lli-saas/crm-adapter/monday-state.json`)
 - `PORT` (optional, defaults to `3000`)
 
-The adapter persists tenant-aware Monday OAuth, selected destination board, board mapping, scan runs, and delivery state in the file at `CRM_ADAPTER_STATE_PATH`. It does not persist the source owner corpus. In Kubernetes, pilot durability requires the mounted storage path from `infra/`.
+The adapter persists tenant-aware Monday OAuth, selected destination board, board mapping, scan runs, and delivery state in the file at `CRM_ADAPTER_STATE_PATH`. Delivery records now also carry a deterministic `transaction_id` derived from tenant + lead identity so retries can resolve safely after transient failures. It does not persist the source owner corpus. In Kubernetes, pilot durability requires the mounted storage path from `infra/`.
 
 ## Monday assumptions
 
@@ -26,6 +26,14 @@ The adapter persists tenant-aware Monday OAuth, selected destination board, boar
 - Destination lead board: the currently selected board in adapter state
 - Default item-name strategy: `deceased_name_county`
 - Duplicate identity: obituary URL first, then `{deceased_name, death_date, owner_id}` fallback
+- Idempotency transaction ID: deterministic SHA-256 hash of `{tenant_id, obituary_url|fallback_key, scan_id, source}` stored on each delivery record
+
+## Lead Validation
+
+- Canonical inbound lead payloads are validated with Zod in `src/leadContract.js` before any Monday API reads or writes occur.
+- The schema mirrors the shared lead contract and enforces strict object shapes, enum values, ISO date/date-time strings, and required nested structures.
+- Validation failures return HTTP 400 with a field-specific error and skip Monday duplicate checks and item creation.
+- Recommended handling in production: log the tenant, scan ID, and failing field; preserve the rejected payload in structured logs or dead-letter storage; alert only on repeated validation failures, not one-off bad upstream records.
 
 ## Routes
 
@@ -38,7 +46,16 @@ The adapter persists tenant-aware Monday OAuth, selected destination board, boar
 - `PUT /mapping` persists a focused board mapping model for the selected destination board.
 - `GET /deliveries` returns persisted delivery attempts and scan-run status for the active tenant.
 - `GET /status` returns the current board, mapping, delivery, and scan snapshot for the active tenant.
-- `POST /leads` validates the canonical lead contract, checks for duplicates on the selected board, and records created, skipped, or failed delivery outcomes.
+- `POST /leads` validates the canonical lead contract, computes a deterministic `transaction_id`, short-circuits previously successful retries, checks for duplicates on the selected board, and records created, skipped, or failed delivery outcomes.
+
+## Idempotency behavior
+
+1. Normalize the lead into the adapter's summary shape.
+2. Compute a deterministic `transaction_id` for that tenant + lead identity.
+3. If a prior delivery with the same `transaction_id` already has an `item_id`, return `skipped_idempotent_retry` without calling Monday again.
+4. If the same lead identity was already delivered under another transaction, return `skipped_duplicate`.
+5. If a prior attempt failed before persistence certainty, query Monday before creating again so partial API failures can recover without creating a second item.
+6. Persist every attempt, including `transaction_id`, `item_id`, status, and error details when present.
 
 ## Mapping Scope
 

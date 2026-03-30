@@ -2,7 +2,7 @@ const os = require("os");
 const request = require("supertest");
 const path = require("path");
 
-const { createApp, SOURCE_OWNER_BOARD_NAME } = require("../src/app");
+const { buildTransactionId, createApp, SOURCE_OWNER_BOARD_NAME } = require("../src/app");
 const { FileTokenStore } = require("../src/tokenStore");
 
 function buildLead(overrides = {}) {
@@ -203,6 +203,38 @@ describe("crm-adapter routes", () => {
     });
   });
 
+  it("rejects invalid lead payloads before Monday delivery", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi.fn(async () => []),
+      createItem: vi.fn(async () => ({ id: "item-1" })),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-invalid-lead-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", {
+      oauth: { access_token: "token-123", account_id: "acct-1" },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name", type: "text" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app)
+      .post("/leads")
+      .send(buildLead({ run_started_at: "bad-timestamp" }));
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({
+      error: "Invalid lead field: run_started_at",
+      details: "Lead payload validation failed before Monday delivery",
+    });
+    expect(mondayClient.listBoardItems).not.toHaveBeenCalled();
+    expect(mondayClient.createItem).not.toHaveBeenCalled();
+  });
+
   it("persists the selected destination board from discovered boards", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),
@@ -267,6 +299,135 @@ describe("crm-adapter routes", () => {
     expect(tenantState.board_mapping.columns.tier).toBe("status");
   });
 
+  it("returns blocking validation issues and safe mapping suggestions", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        { id: "clients-board", name: "Clients", columns: [{ id: "owner_name", title: "Owner Name", type: "text" }] },
+        {
+          id: "board-1",
+          name: "Leads",
+          columns: [
+            { id: "name", title: "Deceased Name", type: "text" },
+            { id: "tier", title: "Tier", type: "status" },
+            { id: "obit_link", title: "Obituary Link", type: "link" },
+            { id: "score", title: "Match Score", type: "numbers" },
+          ],
+        },
+      ]),
+      listBoardItems: vi.fn(async () => []),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-validation-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", {
+      oauth: { access_token: "token-123", account_id: "acct-1" },
+      selected_board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Deceased Name", type: "text" }],
+      },
+      board_mapping: {
+        item_name_strategy: "deceased_name_county",
+        columns: {
+          deceased_name: "name",
+          obituary_url: "obitlink",
+        },
+      },
+    });
+    const app = createApp({
+      mondayClient,
+      tokenStore,
+      clientId: "client-id",
+      clientSecret: "secret",
+      redirectUri: "http://localhost:3000/auth/callback",
+    });
+
+    const response = await request(app).get("/validation");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.can_start_scan).toBe(false);
+    expect(response.body.summary.error_count).toBe(1);
+    expect(response.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "mapped_column_missing",
+          field: "obituary_url",
+        }),
+      ]),
+    );
+    expect(response.body.suggestions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: {
+            kind: "set_mapping_column",
+            field: "obituary_url",
+            value: "obit_link",
+          },
+        }),
+      ]),
+    );
+  });
+
+  it("validates draft board selections without persisting them", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        { id: "clients-board", name: "Clients", columns: [{ id: "owner_name", title: "Owner Name", type: "text" }] },
+        {
+          id: "board-1",
+          name: "Leads",
+          columns: [{ id: "obit_link", title: "Obituary Link", type: "link" }],
+        },
+        {
+          id: "board-2",
+          name: "Fallback Board",
+          columns: [{ id: "score", title: "Match Score", type: "numbers" }],
+        },
+      ]),
+      listBoardItems: vi.fn(async () => []),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-validation-preview-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", {
+      oauth: { access_token: "token-123", account_id: "acct-1" },
+      selected_board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "obit_link", title: "Obituary Link", type: "link" }],
+      },
+      board_mapping: {
+        item_name_strategy: "deceased_name_county",
+        columns: {},
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/validation/preview").send({
+      board_id: "board-2",
+      mapping: {
+        item_name_strategy: "deceased_name_county",
+        columns: {
+          match_score: "score",
+        },
+      },
+    });
+    const tenantState = await tokenStore.getTenantState("pilot");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.preview).toBe(true);
+    expect(response.body.state.selected_board.id).toBe("board-2");
+    expect(tenantState.selected_board.id).toBe("board-1");
+  });
+
+  it("builds a stable transaction id for the same lead identity", () => {
+    const lead = buildLead();
+
+    expect(buildTransactionId("pilot", lead)).toBe(buildTransactionId("pilot", buildLead()));
+    expect(buildTransactionId("pilot", lead)).not.toBe(buildTransactionId("other-tenant", lead));
+  });
+
   it("creates a Monday item from the canonical lead contract on the selected board", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),
@@ -305,6 +466,7 @@ describe("crm-adapter routes", () => {
     const response = await request(app).post("/leads").send(buildLead());
 
     expect(response.statusCode).toBe(201);
+    expect(response.body.transaction_id).toBe(buildTransactionId("pilot", response.body.lead));
     expect(response.body.item_name).toBe("Pat Example - Boone County");
     expect(response.body.lead).toEqual({
       deceased_name: "Pat Example",
@@ -343,6 +505,94 @@ describe("crm-adapter routes", () => {
     });
   });
 
+  it("skips an idempotent retry when the same transaction already created an item", async () => {
+    const lead = buildLead();
+    const transactionId = buildTransactionId("pilot", lead);
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi.fn(async () => []),
+      createItem: vi.fn(async () => ({ id: "item-999" })),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-idempotent-retry-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name", type: "text" }],
+      },
+      deliveries: [
+        {
+          id: "delivery-1",
+          transaction_id: transactionId,
+          item_id: "item-123",
+          item_name: "Pat Example - Boone County",
+          obituary_url: "https://example.com/obit",
+          fallback_duplicate_key: "pat example::2026 03 10::owner 1",
+          status: "created",
+          summary: {
+            obituary_url: "https://example.com/obit",
+          },
+        },
+      ],
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/leads").send(lead);
+    const tenantState = await tokenStore.getTenantState("pilot");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.status).toBe("skipped_idempotent_retry");
+    expect(response.body.transaction_id).toBe(transactionId);
+    expect(response.body.duplicate_of).toBe("item-123");
+    expect(mondayClient.listBoardItems).not.toHaveBeenCalled();
+    expect(mondayClient.createItem).not.toHaveBeenCalled();
+    expect(tenantState.deliveries[0].status).toBe("skipped_idempotent_retry");
+  });
+
+  it("retries a previously failed delivery without creating duplicates", async () => {
+    const lead = buildLead();
+    const transactionId = buildTransactionId("pilot", lead);
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi.fn(async () => []),
+      createItem: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("temporary Monday outage"))
+        .mockResolvedValueOnce({ id: "item-234" }),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-retry-after-failure-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name", type: "text" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const firstResponse = await request(app).post("/leads").send(lead);
+    const secondResponse = await request(app).post("/leads").send(lead);
+    const tenantState = await tokenStore.getTenantState("pilot");
+
+    expect(firstResponse.statusCode).toBe(502);
+    expect(firstResponse.body.transaction_id).toBe(transactionId);
+    expect(secondResponse.statusCode).toBe(201);
+    expect(secondResponse.body.transaction_id).toBe(transactionId);
+    expect(mondayClient.createItem).toHaveBeenCalledTimes(2);
+    expect(tenantState.deliveries[0].status).toBe("created");
+    expect(tenantState.deliveries[1].status).toBe("failed");
+  });
+
   it("skips duplicate Monday items using the persisted obituary identity", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),
@@ -377,7 +627,7 @@ describe("crm-adapter routes", () => {
     });
     const app = createApp({ mondayClient, tokenStore });
 
-    const response = await request(app).post("/leads").send(buildLead());
+    const response = await request(app).post("/leads").send(buildLead({ scan_id: "scan-2" }));
     const tenantState = await tokenStore.getTenantState("pilot");
 
     expect(response.statusCode).toBe(200);
@@ -385,6 +635,41 @@ describe("crm-adapter routes", () => {
     expect(response.body.duplicate_of).toBe("item-123");
     expect(mondayClient.createItem).not.toHaveBeenCalled();
     expect(tenantState.deliveries[0].status).toBe("skipped_duplicate");
+  });
+
+  it("treats a post-failure board hit as an idempotent-safe duplicate recovery", async () => {
+    const lead = buildLead();
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoardItems: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "item-345", name: "https://example.com/obit", column_values: [] }]),
+      createItem: vi.fn().mockRejectedValueOnce(new Error("timeout after create submitted")),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-post-failure-recovery-${Date.now()}.json`),
+    });
+    await tokenStore.saveState({
+      tokens: {
+        monday_access_token: "token-123",
+      },
+      board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Name", type: "text" }],
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const firstResponse = await request(app).post("/leads").send(lead);
+    const secondResponse = await request(app).post("/leads").send(lead);
+
+    expect(firstResponse.statusCode).toBe(502);
+    expect(secondResponse.statusCode).toBe(200);
+    expect(secondResponse.body.status).toBe("skipped_duplicate");
+    expect(secondResponse.body.item_id).toBe("item-345");
+    expect(mondayClient.createItem).toHaveBeenCalledTimes(1);
   });
 
   it("returns operator-ready status state", async () => {

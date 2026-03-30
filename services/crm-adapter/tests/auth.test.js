@@ -299,6 +299,128 @@ describe("crm-adapter routes", () => {
     expect(tenantState.board_mapping.columns.tier).toBe("status");
   });
 
+  it("returns blocking validation issues and safe mapping suggestions", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        { id: "clients-board", name: "Clients", columns: [{ id: "owner_name", title: "Owner Name", type: "text" }] },
+        {
+          id: "board-1",
+          name: "Leads",
+          columns: [
+            { id: "name", title: "Deceased Name", type: "text" },
+            { id: "tier", title: "Tier", type: "status" },
+            { id: "obit_link", title: "Obituary Link", type: "link" },
+            { id: "score", title: "Match Score", type: "numbers" },
+          ],
+        },
+      ]),
+      listBoardItems: vi.fn(async () => []),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-validation-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", {
+      oauth: { access_token: "token-123", account_id: "acct-1" },
+      selected_board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "name", title: "Deceased Name", type: "text" }],
+      },
+      board_mapping: {
+        item_name_strategy: "deceased_name_county",
+        columns: {
+          deceased_name: "name",
+          obituary_url: "obitlink",
+        },
+      },
+    });
+    const app = createApp({
+      mondayClient,
+      tokenStore,
+      clientId: "client-id",
+      clientSecret: "secret",
+      redirectUri: "http://localhost:3000/auth/callback",
+    });
+
+    const response = await request(app).get("/validation");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.can_start_scan).toBe(false);
+    expect(response.body.summary.error_count).toBe(1);
+    expect(response.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "mapped_column_missing",
+          field: "obituary_url",
+        }),
+      ]),
+    );
+    expect(response.body.suggestions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: {
+            kind: "set_mapping_column",
+            field: "obituary_url",
+            value: "obit_link",
+          },
+        }),
+      ]),
+    );
+  });
+
+  it("validates draft board selections without persisting them", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        { id: "clients-board", name: "Clients", columns: [{ id: "owner_name", title: "Owner Name", type: "text" }] },
+        {
+          id: "board-1",
+          name: "Leads",
+          columns: [{ id: "obit_link", title: "Obituary Link", type: "link" }],
+        },
+        {
+          id: "board-2",
+          name: "Fallback Board",
+          columns: [{ id: "score", title: "Match Score", type: "numbers" }],
+        },
+      ]),
+      listBoardItems: vi.fn(async () => []),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-validation-preview-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", {
+      oauth: { access_token: "token-123", account_id: "acct-1" },
+      selected_board: {
+        id: "board-1",
+        name: "Leads",
+        columns: [{ id: "obit_link", title: "Obituary Link", type: "link" }],
+      },
+      board_mapping: {
+        item_name_strategy: "deceased_name_county",
+        columns: {},
+      },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/validation/preview").send({
+      board_id: "board-2",
+      mapping: {
+        item_name_strategy: "deceased_name_county",
+        columns: {
+          match_score: "score",
+        },
+      },
+    });
+    const tenantState = await tokenStore.getTenantState("pilot");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.preview).toBe(true);
+    expect(response.body.state.selected_board.id).toBe("board-2");
+    expect(tenantState.selected_board.id).toBe("board-1");
+  });
+
   it("builds a stable transaction id for the same lead identity", () => {
     const lead = buildLead();
 

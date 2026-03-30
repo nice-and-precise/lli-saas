@@ -11,6 +11,11 @@ const {
   normalizeMondayOwnerRecords,
 } = require("./ownerRecord");
 const { createDefaultMapping, DEFAULT_TENANT_ID, FileTokenStore } = require("./tokenStore");
+const {
+  buildValidationResponse,
+  normalizeMappingInput,
+  validateMondaySetup,
+} = require("./validation");
 
 const SOURCE_OWNER_BOARD_NAME = "Clients";
 
@@ -256,6 +261,21 @@ function buildMondayRequestErrorResponse(error, fallbackMessage) {
   };
 }
 
+function buildPreviewState(state, payload = {}) {
+  const nextBoardId =
+    typeof payload.board_id === "string" && payload.board_id.trim() !== ""
+      ? payload.board_id.trim()
+      : state.board?.id
+        ? String(state.board.id)
+        : "";
+
+  return {
+    ...state,
+    board: nextBoardId ? { id: nextBoardId } : null,
+    board_mapping: normalizeMappingInput(payload.mapping, state.board_mapping ?? createDefaultMapping()),
+  };
+}
+
 function createApp(options = {}) {
   const app = express();
   const tokenStore = options.tokenStore ?? new FileTokenStore();
@@ -274,6 +294,22 @@ function createApp(options = {}) {
     });
 
   app.use(express.json());
+
+  async function getValidationSnapshot(tenantId, overrides = {}) {
+    const state = overrides.state ?? (await getPersistedState(tokenStore, tenantId));
+    const validationResult = await validateMondaySetup({
+      mondayClient,
+      mondayConfig,
+      state,
+      sourceBoardName: SOURCE_OWNER_BOARD_NAME,
+    });
+
+    return buildValidationResponse({
+      tenantId,
+      preview: Boolean(overrides.preview),
+      ...validationResult,
+    });
+  }
 
   async function deliverLead(tenantId, leadPayload) {
     const state = await getPersistedState(tokenStore, tenantId);
@@ -680,10 +716,12 @@ function createApp(options = {}) {
         columns: selectedBoard.columns ?? [],
       },
     });
+    const validation = await getValidationSnapshot(tenantId, { state: persistedState });
 
     return res.json({
       selected_board: persistedState.board,
       tenant_id: tenantId,
+      validation,
     });
   });
 
@@ -719,11 +757,13 @@ function createApp(options = {}) {
     const persistedState = await tokenStore.saveTenantState(tenantId, {
       board_mapping: req.body,
     });
+    const validation = await getValidationSnapshot(tenantId, { state: persistedState });
 
     return res.json({
       tenant_id: tenantId,
       board_id: state.board.id,
       mapping: persistedState.board_mapping,
+      validation,
     });
   });
 
@@ -744,6 +784,25 @@ function createApp(options = {}) {
     const state = await getPersistedState(tokenStore, tenantId);
 
     return res.json(createStatusSnapshot(state, tenantId));
+  });
+
+  app.get("/validation", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const validation = await getValidationSnapshot(tenantId);
+
+    return res.json(validation);
+  });
+
+  app.post("/validation/preview", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const state = await getPersistedState(tokenStore, tenantId);
+    const previewState = buildPreviewState(state, req.body ?? {});
+    const validation = await getValidationSnapshot(tenantId, {
+      state: previewState,
+      preview: true,
+    });
+
+    return res.json(validation);
   });
 
   app.post("/leads", async (req, res) => {

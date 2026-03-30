@@ -1,4 +1,5 @@
 name: pilot-release-gate
+# CI touch: keep workflow-triggered checks attached to integration commits.
 
 on:
   workflow_dispatch:

@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const express = require("express");
 const {
   getLeadSchemaPath,
@@ -38,6 +39,24 @@ function buildLeadIdentity(lead) {
   };
 }
 
+function buildTransactionId(tenantId, lead) {
+  const identity = buildLeadIdentity(lead);
+  const hash = crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify({
+        tenant_id: tenantId,
+        obituary_url: identity.obituaryUrl || null,
+        fallback_key: identity.fallbackKey || null,
+        scan_id: lead.scan_id ?? null,
+        source: lead.source ?? null,
+      }),
+    )
+    .digest("hex");
+
+  return `leadtx_${hash}`;
+}
+
 function findExistingDeliveryByIdentity(deliveries, identity) {
   return (deliveries ?? []).find((delivery) => {
     if (identity.obituaryUrl && delivery.obituary_url && buildDuplicateKey(delivery.obituary_url) === identity.obituaryUrl) {
@@ -52,8 +71,13 @@ function findExistingDeliveryByIdentity(deliveries, identity) {
   });
 }
 
+function findExistingDeliveryByTransactionId(deliveries, transactionId) {
+  return (deliveries ?? []).find((delivery) => delivery.transaction_id === transactionId);
+}
+
 function buildDeliveryRecord({
   tenantId,
+  transactionId,
   boardId,
   lead,
   itemName,
@@ -68,6 +92,7 @@ function buildDeliveryRecord({
   return {
     id: `delivery-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     tenant_id: tenantId,
+    transaction_id: transactionId,
     scan_id: lead.scan_id,
     board_id: boardId,
     status,
@@ -282,12 +307,49 @@ function createApp(options = {}) {
       };
     }
 
+    const transactionId = buildTransactionId(tenantId, mappedLead.summary);
     const identity = buildLeadIdentity(mappedLead.summary);
     const duplicateKey = identity.obituaryUrl || identity.fallbackKey || buildDuplicateKey(mappedLead.itemName);
-    const persistedDuplicate = findExistingDeliveryByIdentity(state.deliveries, identity);
-    if (persistedDuplicate) {
+
+    const persistedTransaction = findExistingDeliveryByTransactionId(state.deliveries, transactionId);
+    if (persistedTransaction?.item_id) {
       const deliveryRecord = buildDeliveryRecord({
         tenantId,
+        transactionId,
+        boardId: state.board.id,
+        lead: mappedLead.summary,
+        itemName: mappedLead.itemName,
+        duplicateKey,
+        obituaryUrl: mappedLead.summary.obituary_url ?? null,
+        fallbackDuplicateKey: identity.fallbackKey,
+        status: "skipped_idempotent_retry",
+        itemId: persistedTransaction.item_id,
+        duplicateOf: persistedTransaction.item_id,
+      });
+      const scanRuns = upsertScanRun(state.scan_runs ?? [], deliveryRecord);
+      await persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns);
+
+      return {
+        statusCode: 200,
+        body: {
+          tenant_id: tenantId,
+          board_id: state.board.id,
+          delivery_id: deliveryRecord.id,
+          transaction_id: transactionId,
+          status: deliveryRecord.status,
+          item_id: deliveryRecord.item_id,
+          item_name: mappedLead.itemName,
+          duplicate_of: deliveryRecord.duplicate_of,
+          lead: mappedLead.summary,
+        },
+      };
+    }
+
+    const persistedDuplicate = findExistingDeliveryByIdentity(state.deliveries, identity);
+    if (persistedDuplicate?.item_id) {
+      const deliveryRecord = buildDeliveryRecord({
+        tenantId,
+        transactionId,
         boardId: state.board.id,
         lead: mappedLead.summary,
         itemName: mappedLead.itemName,
@@ -307,6 +369,7 @@ function createApp(options = {}) {
           tenant_id: tenantId,
           board_id: state.board.id,
           delivery_id: deliveryRecord.id,
+          transaction_id: transactionId,
           status: deliveryRecord.status,
           item_id: deliveryRecord.item_id,
           item_name: mappedLead.itemName,
@@ -334,6 +397,7 @@ function createApp(options = {}) {
     if (duplicateMatch) {
       const deliveryRecord = buildDeliveryRecord({
         tenantId,
+        transactionId,
         boardId: state.board.id,
         lead: mappedLead.summary,
         itemName: mappedLead.itemName,
@@ -353,6 +417,7 @@ function createApp(options = {}) {
           tenant_id: tenantId,
           board_id: state.board.id,
           delivery_id: deliveryRecord.id,
+          transaction_id: transactionId,
           status: deliveryRecord.status,
           item_id: duplicateMatch.id ?? null,
           item_name: mappedLead.itemName,
@@ -371,6 +436,7 @@ function createApp(options = {}) {
       });
       const deliveryRecord = buildDeliveryRecord({
         tenantId,
+        transactionId,
         boardId: state.board.id,
         lead: mappedLead.summary,
         itemName: mappedLead.itemName,
@@ -389,6 +455,7 @@ function createApp(options = {}) {
           tenant_id: tenantId,
           board_id: state.board.id,
           delivery_id: deliveryRecord.id,
+          transaction_id: transactionId,
           status: deliveryRecord.status,
           item_id: createdItem?.id ?? null,
           item_name: mappedLead.itemName,
@@ -398,6 +465,7 @@ function createApp(options = {}) {
     } catch (error) {
       const deliveryRecord = buildDeliveryRecord({
         tenantId,
+        transactionId,
         boardId: state.board.id,
         lead: mappedLead.summary,
         itemName: mappedLead.itemName,
@@ -417,6 +485,7 @@ function createApp(options = {}) {
           tenant_id: tenantId,
           board_id: state.board.id,
           delivery_id: deliveryRecord.id,
+          transaction_id: transactionId,
           status: deliveryRecord.status,
           lead: mappedLead.summary,
         },
@@ -688,6 +757,7 @@ function createApp(options = {}) {
 
 module.exports = {
   SOURCE_OWNER_BOARD_NAME,
+  buildTransactionId,
   createApp,
   getPersistedState,
 };

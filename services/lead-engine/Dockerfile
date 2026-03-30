@@ -6,7 +6,7 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir poetry==2.1.1
+RUN pip install --no-cache-dir poetry==2.3.2
 
 COPY services/lead-engine/pyproject.toml /app/
 RUN poetry install --only main --no-root

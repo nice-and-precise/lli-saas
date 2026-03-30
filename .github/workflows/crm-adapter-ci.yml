@@ -51,8 +51,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: services/crm-adapter
+          context: .
+          file: services/crm-adapter/Dockerfile
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-

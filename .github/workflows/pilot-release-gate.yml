@@ -38,5 +38,8 @@ jobs:
       - name: Install lead-engine deps
         working-directory: services/lead-engine
         run: poetry install
+      - name: Install obituary-intelligence-engine deps
+        working-directory: services/obituary-intelligence-engine
+        run: poetry install
       - name: Run pilot release gate
         run: bash scripts/pilot-readiness-check.sh

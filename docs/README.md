@@ -10,6 +10,8 @@ Use this file as the navigation entrypoint for the repo documentation.
   - local setup, env vars, service startup, and verification
 - [Documentation Standards](../docs/documentation-standards.md)
   - source-of-truth rules, update matrix, and diagram maintenance rules
+- [Data Intake API](../docs/data-intake-api.md)
+  - self-service integration contract, auth flow, required fields, OpenAPI assets, and submission examples
 
 ## Operator / Pilot Docs
 
@@ -25,6 +27,12 @@ Use this file as the navigation entrypoint for the repo documentation.
 - [crm-adapter](../services/crm-adapter/README.md)
 - [user-portal](../services/user-portal/README.md)
 - [infra](../infra/README.md)
+
+## API Assets
+
+- [LLI Data Intake API guide](../docs/data-intake-api.md)
+- [OpenAPI spec](../services/crm-adapter/openapi.json)
+- [Interactive developer portal](../services/crm-adapter/developer-portal.html)
 
 ## Archive
 

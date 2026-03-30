@@ -8,6 +8,8 @@ Use these rules to keep repo documentation coherent as the product changes.
 - [README.md](../README.md) is the repo overview and first-entry document.
 - service `README.md` files describe service-specific runtime behavior, commands, and environment.
 - [shared/contracts](../shared/contracts) is the contract source of truth for canonical payload shapes.
+- [docs/data-intake-api.md](../docs/data-intake-api.md) is the source of truth for self-service integration guidance around crm-adapter.
+- [services/crm-adapter/openapi.json](../services/crm-adapter/openapi.json) is the machine-readable source of truth for the documented HTTP contract.
 
 ## Update Rules
 
@@ -16,6 +18,8 @@ Use these rules to keep repo documentation coherent as the product changes.
   - [README.md](../README.md)
 - If a canonical payload changes, update:
   - [shared/contracts](../shared/contracts)
+  - [docs/data-intake-api.md](../docs/data-intake-api.md)
+  - [services/crm-adapter/openapi.json](../services/crm-adapter/openapi.json)
   - every service README that documents the affected fields or routes
 - If deployment topology changes, update:
   - [infra/README.md](../infra/README.md)

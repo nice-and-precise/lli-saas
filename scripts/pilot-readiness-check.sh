@@ -38,8 +38,8 @@ assert_in_file() {
 
 cd "${ROOT_DIR}"
 
-run_step "lead-engine tests" bash -lc 'cd services/lead-engine && python3 -m pytest'
-run_step "obituary-intelligence-engine tests" bash -lc 'cd services/obituary-intelligence-engine && python3 -m pytest'
+run_step "lead-engine tests" bash -lc 'cd services/lead-engine && poetry run pytest'
+run_step "obituary-intelligence-engine tests" bash -lc 'cd services/obituary-intelligence-engine && poetry run pytest'
 run_step "crm-adapter tests" bash -lc 'cd services/crm-adapter && npm test'
 run_step "user-portal tests" bash -lc 'cd services/user-portal && npm test'
 run_step "user-portal build" bash -lc 'cd services/user-portal && npm run build'

@@ -1,12 +1,12 @@
 {
-  "taskId": "7b4ca458-00c3-45ae-a522-b67e748282ef",
+  "taskId": "e3a57279-2dba-4932-bc83-181395f26a1f",
   "productId": "512ad7b8-0cc7-43e9-a029-7aec7e094631",
-  "createdAt": "2026-03-28T15:11:13.885Z",
+  "createdAt": "2026-03-30T19:34:44.152Z",
   "strategy": "worktree",
-  "branch": "autopilot/data-validation-with-pydantic-zod-for-le-7b4ca458",
+  "branch": "autopilot/configurable-data-field-mapping-in-user-e3a57279",
   "baseBranch": "main",
-  "baseCommit": "139766f26099e3ced42713a072fd37803dcef40c",
+  "baseCommit": "ac2b3b194b860e3823bc162f492103b4f915a588",
   "status": "active",
-  "agentId": "66b90753-8bf4-43ae-8022-df25f12e1e0f",
-  "isolatedPort": 4200
+  "agentId": "86106c29-e2f3-49cd-ae85-caae72d71637",
+  "isolatedPort": 4205
 }

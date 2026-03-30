@@ -296,6 +296,21 @@ describe("crm-adapter routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body.mapping.item_name_strategy).toBe("deceased_name_county");
+    expect(response.body.field_catalog.crm_fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "name", label: "Name", type: "text" }),
+      ]),
+    );
+    expect(response.body.field_catalog.lli_fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "deceased_name",
+          label: "Deceased name",
+          required: true,
+          description: expect.any(String),
+        }),
+      ]),
+    );
     expect(tenantState.board_mapping.columns.tier).toBe("status");
   });
 

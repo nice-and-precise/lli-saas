@@ -27,5 +27,28 @@ jobs:
         run: helm lint infra/charts/lli-saas
       - name: Helm template
         run: helm template lli-saas infra/charts/lli-saas > /tmp/lli-saas-rendered.yaml
-      - name: Validate Kubernetes manifests
-        run: kubectl apply --dry-run=client --validate=false -f /tmp/lli-saas-rendered.yaml
+      - name: Offline manifest assertions
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          rendered = pathlib.Path("/tmp/lli-saas-rendered.yaml").read_text()
+          checks = [
+              (r"kind:\s+Deployment", "rendered manifests are missing Deployments"),
+              (r"kind:\s+Service", "rendered manifests are missing Services"),
+              (r"kind:\s+PersistentVolumeClaim", "rendered manifests are missing PersistentVolumeClaims"),
+              (r"kind:\s+CronJob", "rendered manifests are missing CronJobs"),
+              (r"kind:\s+HorizontalPodAutoscaler", "rendered manifests are missing HPAs"),
+          ]
+
+          for pattern, message in checks:
+              if not re.search(pattern, rendered):
+                  print(f"ERROR: {message}", file=sys.stderr)
+                  sys.exit(1)
+
+          if re.search(r'name:\s+(CRM_ADAPTER_BASE_URL|LEAD_ENGINE_BASE_URL)\s*\n\s*value:\s+"http://localhost', rendered):
+              print("ERROR: rendered manifests still point runtime URLs at localhost", file=sys.stderr)
+              sys.exit(1)
+          PY

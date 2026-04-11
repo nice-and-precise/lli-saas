@@ -10,6 +10,7 @@ const {
   getOwnerRecordSchemaPath,
   normalizeMondayOwnerRecords,
 } = require("./ownerRecord");
+const { createProfilingReport } = require("./profiler");
 const { createDefaultMapping, DEFAULT_TENANT_ID, FileTokenStore } = require("./tokenStore");
 const {
   FIELD_METADATA,
@@ -844,6 +845,32 @@ function createApp(options = {}) {
     });
 
     return res.json(validation);
+  });
+
+  app.post("/owners/profile", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const payload = req.body ?? {};
+    const ownerRecords = Array.isArray(payload.owner_records) ? payload.owner_records : null;
+
+    if (!ownerRecords) {
+      return res.status(400).json({ error: "owner_records must be an array" });
+    }
+
+    try {
+      const report = createProfilingReport(ownerRecords, {
+        datasetName: payload.dataset_name ?? `tenant_${tenantId}_owner_data`,
+      });
+
+      return res.json({
+        tenant_id: tenantId,
+        report,
+      });
+    } catch (error) {
+      return res.status(400).json({
+        error: "Failed to profile owner records",
+        details: error.message,
+      });
+    }
   });
 
   app.post("/leads", async (req, res) => {

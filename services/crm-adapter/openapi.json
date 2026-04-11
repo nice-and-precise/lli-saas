@@ -1,0 +1,1673 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LLI Data Intake API",
+    "version": "0.1.0",
+    "summary": "Self-service API contract for broker CRM data intake and lead delivery configuration.",
+    "description": "OpenAPI contract for the lli-saas crm-adapter service. This spec documents the routes brokers or their IT teams use to connect Monday.com, validate setup, fetch normalized owner records, configure destination-board mapping, and submit canonical obituary lead payloads for delivery."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local crm-adapter default"
+    },
+    {
+      "url": "https://crm-adapter.lli-saas.local",
+      "description": "Illustrative deployed endpoint"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health"
+    },
+    {
+      "name": "Auth"
+    },
+    {
+      "name": "Boards"
+    },
+    {
+      "name": "Owners"
+    },
+    {
+      "name": "Validation"
+    },
+    {
+      "name": "Mapping"
+    },
+    {
+      "name": "Leads"
+    },
+    {
+      "name": "Status"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "TenantHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-tenant-id",
+        "description": "Optional tenant selector. Defaults to `pilot` when omitted."
+      }
+    },
+    "parameters": {
+      "TenantHeader": {
+        "name": "x-tenant-id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Optional tenant scope for saved OAuth, board, mapping, scan, and delivery state. Defaults to `pilot`."
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "default": 10000
+        },
+        "description": "Maximum number of owner records to fetch from the Monday Clients board."
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "details": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "crm-adapter"
+            ]
+          },
+          "monday_oauth_configured": {
+            "type": "boolean"
+          },
+          "source_owner_board_name": {
+            "type": "string"
+          },
+          "token_store_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "monday_oauth_configured",
+          "source_owner_board_name",
+          "token_store_path"
+        ]
+      },
+      "ReadyResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready"
+            ]
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "crm-adapter"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "service"
+        ]
+      },
+      "NotReadyResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_ready"
+            ]
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "crm-adapter"
+            ]
+          },
+          "missing_configuration": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "missing_configuration"
+        ]
+      },
+      "ContractResponse": {
+        "type": "object",
+        "properties": {
+          "lead_contract_path": {
+            "type": "string"
+          },
+          "owner_record_contract_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lead_contract_path",
+          "owner_record_contract_path"
+        ]
+      },
+      "BoardColumn": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "Board": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoardColumn"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "BoardsResponse": {
+        "type": "object",
+        "properties": {
+          "boards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Board"
+            }
+          },
+          "selected_board": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Board"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "boards",
+          "selected_board",
+          "tenant_id"
+        ]
+      },
+      "SelectBoardRequest": {
+        "type": "object",
+        "properties": {
+          "board_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "board_id"
+        ],
+        "additionalProperties": false
+      },
+      "BoardMapping": {
+        "type": "object",
+        "description": "Maps canonical lead summary fields onto Monday destination columns.",
+        "properties": {
+          "item_name_strategy": {
+            "type": "string",
+            "enum": [
+              "deceased_name_county",
+              "deceased_name_only",
+              "deceased_name_address"
+            ]
+          },
+          "columns": {
+            "type": "object",
+            "description": "Dictionary of canonical field name -> Monday column id.",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "item_name_strategy",
+          "columns"
+        ],
+        "additionalProperties": false
+      },
+      "ValidationResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Current Monday connectivity and board-mapping validation snapshot."
+      },
+      "SelectedBoardResponse": {
+        "type": "object",
+        "properties": {
+          "selected_board": {
+            "$ref": "#/components/schemas/Board"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationResponse"
+          }
+        },
+        "required": [
+          "selected_board",
+          "tenant_id",
+          "validation"
+        ]
+      },
+      "MappingResponse": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string"
+          },
+          "board_id": {
+            "type": "string"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/BoardMapping"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationResponse"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "board_id",
+          "mapping"
+        ],
+        "additionalProperties": true
+      },
+      "OwnerRecord": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://lli-saas.local/contracts/owner-record.schema.json",
+        "title": "OwnerRecord",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "owner_id",
+          "owner_name",
+          "county",
+          "state",
+          "acres",
+          "parcel_ids",
+          "mailing_state",
+          "mailing_city",
+          "mailing_postal_code",
+          "property_address_line_1",
+          "property_city",
+          "property_postal_code",
+          "operator_name",
+          "crm_source",
+          "raw_source_ref"
+        ],
+        "properties": {
+          "owner_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "owner_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "county": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "acres": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "parcel_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mailing_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mailing_city": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mailing_postal_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "property_address_line_1": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "property_city": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "property_postal_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "operator_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "crm_source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "raw_source_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "OwnersResponse": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string"
+          },
+          "source_board": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "owner_count": {
+            "type": "integer"
+          },
+          "owners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnerRecord"
+            }
+          }
+        },
+        "required": [
+          "tenant_id",
+          "source_board",
+          "owner_count",
+          "owners"
+        ]
+      },
+      "Lead": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://lli-saas.local/contracts/lead.schema.json",
+        "title": "Lead",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scan_id",
+          "source",
+          "run_started_at",
+          "run_completed_at",
+          "owner_id",
+          "owner_name",
+          "deceased_name",
+          "property",
+          "heirs",
+          "obituary",
+          "match",
+          "tier",
+          "out_of_state_heir_likely",
+          "out_of_state_states",
+          "executor_mentioned",
+          "unexpected_death",
+          "notes",
+          "tags",
+          "raw_artifacts"
+        ],
+        "properties": {
+          "scan_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "run_started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "run_completed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "owner_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "owner_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "deceased_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "property": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "county",
+              "state",
+              "acres",
+              "parcel_ids",
+              "address_line_1",
+              "city",
+              "postal_code",
+              "operator_name"
+            ],
+            "properties": {
+              "county": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "acres": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "parcel_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "address_line_1": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "city": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "postal_code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "operator_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "heirs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "relationship",
+                "location_city",
+                "location_state",
+                "out_of_state",
+                "phone",
+                "email",
+                "mailing_address",
+                "executor"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "relationship": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "location_city": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "location_state": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "out_of_state": {
+                  "type": "boolean"
+                },
+                "phone": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "email": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "mailing_address": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "executor": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "obituary": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "url",
+              "source_id",
+              "published_at",
+              "death_date",
+              "deceased_city",
+              "deceased_state"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "published_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "death_date": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date"
+              },
+              "deceased_city": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "deceased_state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "match": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "score",
+              "last_name_score",
+              "first_name_score",
+              "location_bonus_applied",
+              "status"
+            ],
+            "properties": {
+              "score": {
+                "type": "number"
+              },
+              "last_name_score": {
+                "type": "number"
+              },
+              "first_name_score": {
+                "type": "number"
+              },
+              "location_bonus_applied": {
+                "type": "boolean"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "auto_confirmed",
+                  "pending_review"
+                ]
+              }
+            }
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "hot",
+              "warm",
+              "pending_review",
+              "low_signal"
+            ]
+          },
+          "out_of_state_heir_likely": {
+            "type": "boolean"
+          },
+          "out_of_state_states": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "executor_mentioned": {
+            "type": "boolean"
+          },
+          "unexpected_death": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "raw_artifacts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "description": "Canonical lead intake payload accepted by crm-adapter POST /leads."
+      },
+      "DeliveryResponse": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string"
+          },
+          "board_id": {
+            "type": "string"
+          },
+          "delivery_id": {
+            "type": "string"
+          },
+          "transaction_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "created",
+              "skipped_duplicate",
+              "skipped_idempotent_retry",
+              "failed"
+            ]
+          },
+          "item_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item_name": {
+            "type": "string"
+          },
+          "duplicate_of": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lead": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Normalized lead summary that crm-adapter stores for delivery tracking."
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "board_id",
+          "delivery_id",
+          "transaction_id",
+          "status",
+          "lead"
+        ],
+        "additionalProperties": true
+      },
+      "DeliveriesResponse": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string"
+          },
+          "board_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deliveries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "scan_runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "tenant_id",
+          "board_id",
+          "deliveries",
+          "scan_runs"
+        ]
+      },
+      "StatusResponse": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string"
+          },
+          "board": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Board"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "board_mapping": {
+            "$ref": "#/components/schemas/BoardMapping"
+          },
+          "deliveries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "scan_runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "latest_delivery": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "tenant_id",
+          "board",
+          "board_mapping",
+          "deliveries",
+          "scan_runs",
+          "latest_delivery"
+        ]
+      },
+      "ValidationPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "board_id": {
+            "type": "string"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/BoardMapping"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "examples": {
+      "LeadExample": {
+        "summary": "Canonical obituary lead payload",
+        "value": {
+          "scan_id": "scan-2026-03-30-001",
+          "source": "obituary_intelligence_engine",
+          "run_started_at": "2026-03-30T14:00:00Z",
+          "run_completed_at": "2026-03-30T14:03:12Z",
+          "owner_id": "owner-1088",
+          "owner_name": "Jordan Example",
+          "deceased_name": "Pat Example",
+          "property": {
+            "county": "Boone",
+            "state": "IA",
+            "acres": 120.5,
+            "parcel_ids": [
+              "17-01-100-001"
+            ],
+            "address_line_1": "123 County Road",
+            "city": "Boone",
+            "postal_code": "50036",
+            "operator_name": "Johnson Farms LLC"
+          },
+          "heirs": [
+            {
+              "name": "Casey Example",
+              "relationship": "son",
+              "location_city": "Phoenix",
+              "location_state": "AZ",
+              "out_of_state": true,
+              "phone": null,
+              "email": null,
+              "mailing_address": null,
+              "executor": false
+            }
+          ],
+          "obituary": {
+            "url": "https://example.com/obituaries/pat-example",
+            "source_id": "kwbg_boone",
+            "published_at": "2026-03-30T13:55:00Z",
+            "death_date": "2026-03-29",
+            "deceased_city": "Boone",
+            "deceased_state": "IA"
+          },
+          "match": {
+            "score": 96.2,
+            "last_name_score": 100,
+            "first_name_score": 90.5,
+            "location_bonus_applied": true,
+            "status": "auto_confirmed"
+          },
+          "tier": "hot",
+          "out_of_state_heir_likely": true,
+          "out_of_state_states": [
+            "AZ"
+          ],
+          "executor_mentioned": false,
+          "unexpected_death": false,
+          "notes": [
+            "pilot-ready"
+          ],
+          "tags": [
+            "tier:hot",
+            "signal:out_of_state_heir"
+          ],
+          "raw_artifacts": [
+            "artifact-1.json"
+          ]
+        }
+      },
+      "BoardMappingExample": {
+        "summary": "Typical destination board mapping",
+        "value": {
+          "item_name_strategy": "deceased_name_county",
+          "columns": {
+            "deceased_name": "text_mks9h0v9",
+            "owner_name": "text_mks9m6j2",
+            "obituary_url": "link_mks97f4h",
+            "match_score": "numbers_mks9s8j0",
+            "tier": "status_mks9v4x1",
+            "county": "text_mks9z1c7",
+            "death_date": "date_mksa1xv9",
+            "heirs_formatted": "long_text_mksa4kq2",
+            "tags": "dropdown_mksa7dt8",
+            "scan_id": "text_mksab189"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Service liveness probe",
+        "responses": {
+          "200": {
+            "description": "crm-adapter is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Service readiness probe",
+        "responses": {
+          "200": {
+            "description": "crm-adapter has required configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Missing required Monday configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotReadyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contract": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Return filesystem paths for canonical JSON schemas",
+        "responses": {
+          "200": {
+            "description": "Contract paths",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Redirect to Monday OAuth authorization",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque state value passed through Monday OAuth."
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirects browser to Monday OAuth"
+          }
+        }
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Exchange OAuth code and persist Monday token state",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Monday OAuth authorization code."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Monday account connected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "account_id": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "connected",
+                    "account_id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing OAuth code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/boards": {
+      "get": {
+        "tags": [
+          "Boards"
+        ],
+        "summary": "List available Monday boards for the connected tenant",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Boards returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardsResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tenant has not connected Monday OAuth",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Monday API request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/owners": {
+      "get": {
+        "tags": [
+          "Owners"
+        ],
+        "summary": "Fetch and normalize owner records from the Monday Clients board",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Normalized owner records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid limit parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Clients board not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tenant has not connected Monday OAuth",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Monday read or normalization failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/boards/select": {
+      "post": {
+        "tags": [
+          "Boards"
+        ],
+        "summary": "Persist the destination board for lead delivery",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectBoardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Board saved and validated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectedBoardResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing board_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Board not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tenant has not connected Monday OAuth",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Monday board query failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mapping": {
+      "get": {
+        "tags": [
+          "Mapping"
+        ],
+        "summary": "Return the persisted board mapping for the selected destination board",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mapping returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MappingResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No destination board selected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Mapping"
+        ],
+        "summary": "Persist a lead-to-Monday column mapping",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoardMapping"
+              },
+              "examples": {
+                "default": {
+                  "$ref": "#/components/examples/BoardMappingExample"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mapping saved and validated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MappingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid mapping payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No destination board selected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/validation": {
+      "get": {
+        "tags": [
+          "Validation"
+        ],
+        "summary": "Inspect current Monday connection, board, and mapping readiness",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validation snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/validation/preview": {
+      "post": {
+        "tags": [
+          "Validation"
+        ],
+        "summary": "Preview validation results for an unsaved board or mapping change",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidationPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview validation snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deliveries": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Return persisted delivery attempts and scan runs",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveriesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Return the full tenant snapshot used by the operator portal",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current status snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/leads": {
+      "post": {
+        "tags": [
+          "Leads"
+        ],
+        "summary": "Validate and deliver a canonical obituary lead payload to the selected Monday board",
+        "description": "This is the primary self-service intake endpoint for downstream integrations. The payload must match the canonical lead contract. Duplicate and retry protection is enforced via deterministic transaction IDs and lead identity matching.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Lead"
+              },
+              "examples": {
+                "canonicalLead": {
+                  "$ref": "#/components/examples/LeadExample"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Lead created in Monday",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Lead skipped due to duplicate or idempotent retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid lead payload or unmappable field configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tenant is missing OAuth token or destination board selection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Monday duplicate check or delivery failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

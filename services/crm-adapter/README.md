@@ -8,6 +8,9 @@ Express Monday adapter for OAuth, source-owner fetch, destination-board mapping,
 - Run: `npm run dev`
 - Test: `npm test`
 - Docker build: `docker build -f services/crm-adapter/Dockerfile -t lli-saas/crm-adapter:pilot .`
+- OpenAPI spec: `services/crm-adapter/openapi.json`
+- Interactive docs: `services/crm-adapter/developer-portal.html`
+- Submission examples: `services/crm-adapter/examples/submit_lead.py` and `services/crm-adapter/examples/submit_lead.mjs`
 
 ## Environment
 
@@ -27,6 +30,15 @@ The adapter persists tenant-aware Monday OAuth, selected destination board, boar
 - Default item-name strategy: `deceased_name_county`
 - Duplicate identity: obituary URL first, then `{deceased_name, death_date, owner_id}` fallback
 - Idempotency transaction ID: deterministic SHA-256 hash of `{tenant_id, obituary_url|fallback_key, scan_id, source}` stored on each delivery record
+
+## Self-Service Integration Docs
+
+For broker or IT-managed onboarding, use:
+
+- [../../docs/data-intake-api.md](../../docs/data-intake-api.md) for the narrative integration guide
+- [./openapi.json](./openapi.json) for the machine-readable HTTP contract
+- [./developer-portal.html](./developer-portal.html) for interactive Swagger UI docs
+- [./examples/submit_lead.py](./examples/submit_lead.py) and [./examples/submit_lead.mjs](./examples/submit_lead.mjs) for submission examples
 
 ## Lead Validation
 

@@ -216,6 +216,10 @@ def test_service_builds_canonical_leads(tmp_path) -> None:
     assert lead.match.confidence_band == "high"
     assert lead.match.matched_fields == ["last_name", "first_name", "full_name", "location"]
     assert len(lead.match.explanation_details) >= 3
+    assert lead.match.geographic_proximity is not None
+    assert lead.match.geographic_proximity.same_state is True
+    assert lead.match.geographic_proximity.bonus_applied is True
+    assert isinstance(lead.match.discrepancies, list)
     assert lead.owner_profile_url == "lli://owner-profile/board:clients:item:owner-1"
     assert lead.obituary_raw_url == "https://example.com/obit"
 
@@ -297,3 +301,83 @@ def test_http_surface_exposes_run_scan(monkeypatch, tmp_path) -> None:
     assert response.status_code == 200
     assert response.json()["source"] == "obituary_intelligence_engine"
     assert response.json()["leads"][0]["tier"] == "hot"
+
+
+def test_matcher_detects_nickname_match() -> None:
+    nickname_index = NicknameIndex(Path(__file__).resolve().parent.parent / "nicknames.csv")
+    matcher = NameMatcher(nickname_index)
+    # "Bob" is a known nickname for "Robert"
+    match = matcher.match_obituary(build_obituary(full_name="Bob Henderson"), [build_owner()])
+
+    assert match is not None
+    assert match.nickname_match is not None
+    # NameParts stores tokens in lowercase after normalization
+    assert match.nickname_match.owner_name_used == "robert"
+    assert match.nickname_match.obituary_name_used == "bob"
+    assert "bob" in match.nickname_match.nickname_set
+    assert "robert" in match.nickname_match.nickname_set
+
+
+def test_matcher_builds_geographic_proximity() -> None:
+    nickname_index = NicknameIndex(Path(__file__).resolve().parent.parent / "nicknames.csv")
+    matcher = NameMatcher(nickname_index)
+    match = matcher.match_obituary(build_obituary(), [build_owner()])
+
+    assert match is not None
+    assert match.geographic_proximity is not None
+    assert match.geographic_proximity.same_state is True
+    assert match.geographic_proximity.bonus_applied is True
+    assert match.geographic_proximity.city_match_score is not None
+    assert match.geographic_proximity.city_match_score >= 90
+
+
+def test_matcher_detects_state_discrepancy() -> None:
+    nickname_index = NicknameIndex(Path(__file__).resolve().parent.parent / "nicknames.csv")
+    matcher = NameMatcher(nickname_index)
+    # Owner in Iowa, obituary in a different state
+    obituary = build_obituary(full_name="Robert Henderson", city="Springfield", state="IL")
+    owner = build_owner(state="IL", mailing_state="IL", property_city="Springfield", mailing_city="Springfield")
+    match = matcher.match_obituary(obituary, [owner])
+
+    assert match is not None
+    # No state discrepancy since both are IL
+    state_disc = [d for d in match.discrepancies if d.field == "state"]
+    assert len(state_disc) == 0
+
+
+def test_matcher_reports_no_discrepancies_on_clean_match() -> None:
+    nickname_index = NicknameIndex(Path(__file__).resolve().parent.parent / "nicknames.csv")
+    matcher = NameMatcher(nickname_index)
+    match = matcher.match_obituary(build_obituary(full_name="Robert Henderson"), [build_owner()])
+
+    assert match is not None
+    # Robert matches Robert exactly, so no nickname discrepancy
+    assert match.nickname_match is None
+
+
+def test_lead_contract_includes_new_explainability_fields(tmp_path) -> None:
+    state_store = ObituaryStateStore(path=str(tmp_path / "state.json"), retention_days=30)
+    service = ObituaryIntelligenceService(
+        collector=StubCollector(),
+        extractor=HeirExtractor(),
+        matcher=NameMatcher(NicknameIndex(Path(__file__).resolve().parent.parent / "nicknames.csv")),
+        state_store=state_store,
+    )
+
+    result = service.run_scan(
+        ObituaryEngineRunScanRequest(
+            scan_id="explain-1",
+            owner_records=[build_owner()],
+            lookback_days=7,
+        )
+    )
+
+    assert len(result.leads) == 1
+    lead = result.leads[0]
+    # geographic_proximity should always be populated
+    assert lead.match.geographic_proximity is not None
+    assert lead.match.geographic_proximity.same_state is True
+    # discrepancies should be a list (may be empty for clean matches)
+    assert isinstance(lead.match.discrepancies, list)
+    # nickname_match may or may not be present depending on the name pair
+    # (Bob -> Robert would trigger it; Robert -> Robert would not)

@@ -1,5 +1,6 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 
+import MatchExplainabilityCard from "../components/MatchExplainabilityCard";
 import { getRequiredServiceBaseUrl } from "../runtimeConfig";
 
 const INITIAL_FORM = {
@@ -837,6 +838,11 @@ export default function DashboardPage() {
         <article className="panel history-card">
           <h2>Latest scan confidence</h2>
           <LeadConfidenceCard lead={latestLead} />
+        </article>
+
+        <article className="panel explainability-card-panel explainability-card-panel--full">
+          <h2>Match Explainability</h2>
+          <MatchExplainabilityCard lead={latestLead} />
         </article>
       </section>
     </main>

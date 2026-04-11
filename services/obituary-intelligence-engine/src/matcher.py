@@ -9,7 +9,13 @@ from pathlib import Path
 from rapidfuzz import fuzz
 
 from src.collector import ObituaryRecord
-from src.contracts import MatchExplanationDetail, OwnerRecord
+from src.contracts import (
+    DataDiscrepancy,
+    GeographicProximity,
+    MatchExplanationDetail,
+    NicknameIndicator,
+    OwnerRecord,
+)
 
 # Keep matching deterministic and inspectable with a lightweight RapidFuzz-based scorer.
 # Heavier entity-resolution libraries would add extra runtime state and opaque training
@@ -74,6 +80,9 @@ class MatchCandidate:
         matched_fields: list[str],
         explanation: list[str],
         explanation_details: list[MatchExplanationDetail],
+        nickname_match: NicknameIndicator | None = None,
+        discrepancies: list[DataDiscrepancy] | None = None,
+        geographic_proximity: GeographicProximity | None = None,
     ) -> None:
         self.owner_record = owner_record
         self.score = score
@@ -85,6 +94,9 @@ class MatchCandidate:
         self.matched_fields = matched_fields
         self.explanation = explanation
         self.explanation_details = explanation_details
+        self.nickname_match = nickname_match
+        self.discrepancies = discrepancies or []
+        self.geographic_proximity = geographic_proximity
 
 
 def _normalize_name_token(value: str | None) -> str:
@@ -307,6 +319,10 @@ class NameMatcher:
                     "[normalization] score=ignored weight=0 evidence=suffix tokens were removed before scoring"
                 )
 
+            nickname_match = self._detect_nickname_match(obituary_name, owner_name)
+            geographic_proximity = self._build_geographic_proximity(obituary, owner_record, location_bonus_applied)
+            discrepancies = self._detect_discrepancies(obituary, owner_record, obituary_name, owner_name)
+
             candidate = MatchCandidate(
                 owner_record=owner_record,
                 score=round(score, 2),
@@ -318,6 +334,9 @@ class NameMatcher:
                 matched_fields=matched_fields,
                 explanation=explanation,
                 explanation_details=explanation_details,
+                nickname_match=nickname_match,
+                discrepancies=discrepancies,
+                geographic_proximity=geographic_proximity,
             )
             if best is None or candidate.score > best.score:
                 best = candidate
@@ -452,3 +471,110 @@ class NameMatcher:
         if obituary.state.upper() != owner_state.upper():
             return False
         return fuzz.ratio(_normalize_name_token(obituary.city), _normalize_name_token(owner_city)) >= 80
+
+    def _detect_nickname_match(
+        self,
+        obituary_name: NameParts,
+        owner_name: NameParts,
+    ) -> NicknameIndicator | None:
+        """Detect whether the first-name match relied on a nickname expansion."""
+        if not obituary_name.first or not owner_name.first:
+            return None
+        owner_expanded = self.nickname_index.expand(owner_name.first)
+        obituary_expanded = self.nickname_index.expand(obituary_name.first)
+        # If both names expand to sets larger than 1, a nickname bridge may be involved.
+        if len(owner_expanded) <= 1 and len(obituary_expanded) <= 1:
+            return None
+        # Check whether the obituary first name is in the owner's nickname set (or vice versa).
+        owner_normalized = _normalize_name_token(owner_name.first)
+        obituary_normalized = _normalize_name_token(obituary_name.first)
+        nickname_overlap = owner_expanded & obituary_expanded
+        if not nickname_overlap or (owner_normalized == obituary_normalized):
+            return None
+        return NicknameIndicator(
+            owner_name_used=owner_name.first,
+            obituary_name_used=obituary_name.first,
+            nickname_set=sorted(nickname_overlap),
+        )
+
+    def _build_geographic_proximity(
+        self,
+        obituary: ObituaryRecord,
+        owner_record: OwnerRecord,
+        bonus_applied: bool,
+    ) -> GeographicProximity:
+        owner_city = owner_record.property_city or owner_record.mailing_city
+        owner_state = owner_record.state or owner_record.mailing_state
+        same_state = bool(
+            obituary.state and owner_state and obituary.state.upper() == owner_state.upper()
+        )
+        city_match_score: float | None = None
+        if obituary.city and owner_city:
+            city_match_score = round(
+                float(fuzz.ratio(_normalize_name_token(obituary.city), _normalize_name_token(owner_city))), 2
+            )
+        return GeographicProximity(
+            owner_city=owner_city,
+            owner_state=owner_state,
+            obituary_city=obituary.city,
+            obituary_state=obituary.state,
+            same_state=same_state,
+            city_match_score=city_match_score,
+            bonus_applied=bonus_applied,
+        )
+
+    def _detect_discrepancies(
+        self,
+        obituary: ObituaryRecord,
+        owner_record: OwnerRecord,
+        obituary_name: NameParts,
+        owner_name: NameParts,
+    ) -> list[DataDiscrepancy]:
+        discrepancies: list[DataDiscrepancy] = []
+
+        # State mismatch (informational — can be expected for out-of-state owners).
+        if obituary.state and owner_record.state:
+            if obituary.state.upper() != owner_record.state.upper():
+                discrepancies.append(
+                    DataDiscrepancy(
+                        field="state",
+                        owner_value=owner_record.state,
+                        obituary_value=obituary.state,
+                        severity="warning",
+                        note="Owner state and obituary state differ — may indicate an out-of-state property owner.",
+                    )
+                )
+
+        # City mismatch within same state.
+        owner_city = owner_record.property_city or owner_record.mailing_city
+        if obituary.city and owner_city and obituary.state and owner_record.state:
+            if obituary.state.upper() == owner_record.state.upper():
+                city_ratio = fuzz.ratio(_normalize_name_token(obituary.city), _normalize_name_token(owner_city))
+                if city_ratio < 80:
+                    discrepancies.append(
+                        DataDiscrepancy(
+                            field="city",
+                            owner_value=owner_city,
+                            obituary_value=obituary.city,
+                            severity="minor",
+                            note=f"City names differ (similarity {city_ratio:.0f}%) — could be a nearby town or mailing address.",
+                        )
+                    )
+
+        # First-name divergence beyond nickname match.
+        owner_first_norm = _normalize_name_token(owner_name.first)
+        obit_first_norm = _normalize_name_token(obituary_name.first)
+        if owner_first_norm and obit_first_norm and owner_first_norm != obit_first_norm:
+            owner_expanded = self.nickname_index.expand(owner_name.first)
+            if obit_first_norm not in owner_expanded:
+                discrepancies.append(
+                    DataDiscrepancy(
+                        field="first_name",
+                        owner_value=owner_name.first,
+                        obituary_value=obituary_name.first,
+                        severity="minor",
+                        note="First names differ and are not linked through known nickname associations.",
+                    )
+                )
+
+        return discrepancies

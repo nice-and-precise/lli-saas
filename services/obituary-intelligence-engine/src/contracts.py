@@ -89,6 +89,36 @@ class MatchExplanationDetail(BaseModel):
     evidence: str = Field(min_length=1)
 
 
+class NicknameIndicator(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    owner_name_used: str = Field(min_length=1)
+    obituary_name_used: str = Field(min_length=1)
+    nickname_set: list[str] = Field(min_length=1)
+
+
+class DataDiscrepancy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str = Field(min_length=1)
+    owner_value: str | None = None
+    obituary_value: str | None = None
+    severity: Literal["info", "warning", "minor"] = "info"
+    note: str = Field(min_length=1)
+
+
+class GeographicProximity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    owner_city: str | None = None
+    owner_state: str | None = None
+    obituary_city: str | None = None
+    obituary_state: str | None = None
+    same_state: bool = False
+    city_match_score: float | None = None
+    bonus_applied: bool = False
+
+
 class MatchMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -101,6 +131,9 @@ class MatchMetadata(BaseModel):
     matched_fields: list[str] = Field(default_factory=list)
     explanation: list[str] = Field(default_factory=list)
     explanation_details: list[MatchExplanationDetail] = Field(default_factory=list)
+    nickname_match: NicknameIndicator | None = None
+    discrepancies: list[DataDiscrepancy] = Field(default_factory=list)
+    geographic_proximity: GeographicProximity | None = None
 
 
 class Lead(BaseModel):

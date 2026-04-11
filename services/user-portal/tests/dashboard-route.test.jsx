@@ -289,7 +289,8 @@ test("renders validation status, previews mapping edits, and runs the obituary s
     }),
   );
   expect(screen.getByText(/confidence score:/i)).toBeInTheDocument();
-  expect(screen.getByText(/89.0%/i)).toBeInTheDocument();
+  // Score appears in both LeadConfidenceCard and MatchExplainabilityCard
+  expect(screen.getAllByText(/89.0%/i).length).toBeGreaterThanOrEqual(1);
   expect(screen.getByText(/matched fields: last_name, first_name/i)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: /view raw obituary/i })).toHaveAttribute("href", "https://example.com/obit-2");
   expect(screen.getByRole("link", { name: /view owner profile/i })).toHaveAttribute("href", "lli://owner-profile/board:clients:item:owner-2");

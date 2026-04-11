@@ -318,6 +318,122 @@
               }
             }
           }
+        },
+        "nickname_match": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "owner_name_used",
+            "obituary_name_used",
+            "nickname_set"
+          ],
+          "properties": {
+            "owner_name_used": {
+              "type": "string",
+              "minLength": 1
+            },
+            "obituary_name_used": {
+              "type": "string",
+              "minLength": 1
+            },
+            "nickname_set": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          }
+        },
+        "discrepancies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "field",
+              "note",
+              "severity"
+            ],
+            "properties": {
+              "field": {
+                "type": "string",
+                "minLength": 1
+              },
+              "owner_value": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "obituary_value": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "info",
+                  "warning",
+                  "minor"
+                ]
+              },
+              "note": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "geographic_proximity": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "owner_city": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "owner_state": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "obituary_city": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "obituary_state": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "same_state": {
+              "type": "boolean"
+            },
+            "city_match_score": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "bonus_applied": {
+              "type": "boolean"
+            }
+          }
         }
       }
     },

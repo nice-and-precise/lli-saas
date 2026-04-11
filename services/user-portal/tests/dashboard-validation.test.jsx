@@ -38,6 +38,20 @@ test("shows pre-scan validation feedback, applies confident corrections, and blo
             obituary_url: "wrong_link",
           },
         },
+        field_catalog: {
+          crm_fields: [
+            { id: "name", label: "Deceased Name", type: "text", description: "CRM field available on Pilot Leads.", example: null },
+            { id: "status", label: "Tier", type: "status", description: "CRM field available on Pilot Leads.", example: null },
+            { id: "obit_link", label: "Obituary URL", type: "link", description: "CRM field available on Pilot Leads.", example: null },
+            { id: "score", label: "Match Score", type: "numbers", description: "CRM field available on Pilot Leads.", example: null },
+          ],
+          lli_fields: [
+            { key: "deceased_name", label: "Deceased name", description: "Primary decedent name.", example: "Pat Example", source_hint: "Contact full-name field.", recommended_types: ["text"], aliases: ["deceased name"], required: true, mapped_column_id: "namez" },
+            { key: "tier", label: "Tier", description: "LLI priority tier.", example: "hot", source_hint: "Priority field.", recommended_types: ["status"], aliases: ["tier"], required: true, mapped_column_id: "status" },
+            { key: "obituary_url", label: "Obituary URL", description: "Canonical obituary link.", example: "https://example.com/obit", source_hint: "URL field.", recommended_types: ["link"], aliases: ["obituary url"], required: true, mapped_column_id: "wrong_link" },
+            { key: "match_score", label: "Match score", description: "Confidence score.", example: "89", source_hint: "Numeric score field.", recommended_types: ["numbers"], aliases: ["match score"], required: true, mapped_column_id: null },
+          ],
+        },
       }),
     })
     .mockResolvedValueOnce({
@@ -169,6 +183,20 @@ test("shows pre-scan validation feedback, applies confident corrections, and blo
             obituary_url: "obit_link",
           },
         },
+        field_catalog: {
+          crm_fields: [
+            { id: "name", label: "Deceased Name", type: "text", description: "CRM field available on Pilot Leads.", example: null },
+            { id: "status", label: "Tier", type: "status", description: "CRM field available on Pilot Leads.", example: null },
+            { id: "obit_link", label: "Obituary URL", type: "link", description: "CRM field available on Pilot Leads.", example: null },
+            { id: "score", label: "Match Score", type: "numbers", description: "CRM field available on Pilot Leads.", example: null },
+          ],
+          lli_fields: [
+            { key: "deceased_name", label: "Deceased name", description: "Primary decedent name.", example: "Pat Example", source_hint: "Contact full-name field.", recommended_types: ["text"], aliases: ["deceased name"], required: true, mapped_column_id: "name" },
+            { key: "tier", label: "Tier", description: "LLI priority tier.", example: "hot", source_hint: "Priority field.", recommended_types: ["status"], aliases: ["tier"], required: true, mapped_column_id: "status" },
+            { key: "obituary_url", label: "Obituary URL", description: "Canonical obituary link.", example: "https://example.com/obit", source_hint: "URL field.", recommended_types: ["link"], aliases: ["obituary url"], required: true, mapped_column_id: "obit_link" },
+            { key: "match_score", label: "Match score", description: "Confidence score.", example: "89", source_hint: "Numeric score field.", recommended_types: ["numbers"], aliases: ["match score"], required: true, mapped_column_id: null },
+          ],
+        },
         validation: {
           tenant_id: "pilot",
           preview: false,
@@ -240,9 +268,9 @@ test("shows pre-scan validation feedback, applies confident corrections, and blo
   );
 
   await waitFor(() =>
-    expect(screen.getByDisplayValue("name")).toBeInTheDocument(),
+    expect(screen.getByLabelText(/^CRM field for deceased_name$/i)).toHaveValue("name"),
   );
-  expect(screen.getByDisplayValue("obit_link")).toBeInTheDocument();
+  expect(screen.getByLabelText(/^CRM field for obituary_url$/i)).toHaveValue("obit_link");
   expect(screen.getByText(/0 errors · 1 warning/i)).toBeInTheDocument();
 
   const scanButton = screen.getByRole("button", { name: /fix validator errors before running scan/i });

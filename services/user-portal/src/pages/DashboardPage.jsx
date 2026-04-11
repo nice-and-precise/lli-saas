@@ -9,29 +9,10 @@ const INITIAL_FORM = {
   source_ids: "",
 };
 
-const MAPPING_FIELDS = [
-  "deceased_name",
-  "owner_name",
-  "owner_id",
-  "property_address",
-  "county",
-  "acres",
-  "operator_name",
-  "death_date",
-  "obituary_source",
-  "obituary_url",
-  "match_score",
-  "match_status",
-  "tier",
-  "heir_count",
-  "heirs_formatted",
-  "out_of_state_heir_likely",
-  "out_of_state_states",
-  "executor_mentioned",
-  "unexpected_death",
-  "tags",
-  "scan_id",
-  "source",
+const DEFAULT_ITEM_NAME_STRATEGIES = [
+  "deceased_name_county",
+  "deceased_name_only",
+  "deceased_name_address",
 ];
 
 async function fetchJson(baseUrl, path, options = {}) {
@@ -51,9 +32,10 @@ async function fetchJson(baseUrl, path, options = {}) {
   return payload;
 }
 
-function formatColumnSummary(mapping) {
+function formatColumnSummary(mapping, lliFields = []) {
+  const labelsByKey = Object.fromEntries(lliFields.map((field) => [field.key, field.label]));
   return Object.entries(mapping?.columns ?? {})
-    .map(([field, columnId]) => `${field} -> ${columnId}`)
+    .map(([field, columnId]) => `${labelsByKey[field] ?? field} -> ${columnId}`)
     .join(", ");
 }
 
@@ -64,11 +46,19 @@ function parseSourceIds(rawValue) {
     .filter(Boolean);
 }
 
-function buildInitialMappingDraft(mapping) {
+function buildInitialMappingDraft(mapping, lliFields = []) {
   const columns = {};
-  for (const field of MAPPING_FIELDS) {
+  const fieldKeys = lliFields.length > 0 ? lliFields.map((field) => field.key) : [];
+  for (const field of fieldKeys) {
     columns[field] = mapping?.columns?.[field] ?? "";
   }
+
+  Object.entries(mapping?.columns ?? {}).forEach(([field, value]) => {
+    if (!(field in columns)) {
+      columns[field] = value ?? "";
+    }
+  });
+
   return {
     item_name_strategy: mapping?.item_name_strategy ?? "deceased_name_county",
     columns,
@@ -176,13 +166,58 @@ function LeadConfidenceCard({ lead }) {
   );
 }
 
+function MappingFieldCard({ field, value, onChange, crmFields }) {
+  const recommendedTypes = field.recommended_types?.length ? field.recommended_types.join(", ") : "Any compatible text field";
+
+  return (
+    <article className={`mapping-field-card ${field.required ? "required" : ""}`}>
+      <div className="mapping-field-card__header">
+        <div>
+          <div className="mapping-field-card__title-row">
+            <h3>{field.label}</h3>
+            {field.required ? <span className="pill pill-required">Recommended</span> : null}
+          </div>
+          <p className="mapping-field-key">{field.key}</p>
+        </div>
+      </div>
+      <p className="mapping-field-description">{field.description}</p>
+      <dl className="mapping-field-meta">
+        <div>
+          <dt>Example</dt>
+          <dd>{field.example ?? "n/a"}</dd>
+        </div>
+        <div>
+          <dt>Best source</dt>
+          <dd>{field.source_hint ?? "n/a"}</dd>
+        </div>
+        <div>
+          <dt>Preferred CRM field types</dt>
+          <dd>{recommendedTypes}</dd>
+        </div>
+      </dl>
+      <label>
+        CRM field for {field.key}
+        <select aria-label={`CRM field for ${field.key}`} value={value ?? ""} onChange={(event) => onChange(event.target.value)}>
+          <option value="">Not mapped</option>
+          {crmFields.map((crmField) => (
+            <option key={crmField.id} value={crmField.id}>
+              {crmField.label} ({crmField.type})
+            </option>
+          ))}
+        </select>
+      </label>
+    </article>
+  );
+}
+
 export default function DashboardPage() {
   const [status, setStatus] = useState(null);
   const [mapping, setMapping] = useState(null);
-  const [mappingDraft, setMappingDraft] = useState(buildInitialMappingDraft(null));
+  const [mappingDraft, setMappingDraft] = useState(buildInitialMappingDraft(null, []));
   const [boards, setBoards] = useState([]);
   const [selectedBoardId, setSelectedBoardId] = useState("");
   const [validation, setValidation] = useState(null);
+  const [fieldCatalog, setFieldCatalog] = useState({ crm_fields: [], lli_fields: [] });
   const [lastAppliedCorrectionDraft, setLastAppliedCorrectionDraft] = useState(null);
   const [form, setForm] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(true);
@@ -217,13 +252,20 @@ export default function DashboardPage() {
       if (mappingResult.status === "fulfilled") {
         startTransition(() => {
           setMapping(mappingResult.value);
-          setMappingDraft(buildInitialMappingDraft(mappingResult.value.mapping));
+          setFieldCatalog(mappingResult.value.field_catalog ?? { crm_fields: [], lli_fields: [] });
+          setMappingDraft(
+            buildInitialMappingDraft(
+              mappingResult.value.mapping,
+              mappingResult.value.field_catalog?.lli_fields ?? [],
+            ),
+          );
           setLastAppliedCorrectionDraft(null);
         });
       } else {
         startTransition(() => {
           setMapping(null);
-          setMappingDraft(buildInitialMappingDraft(null));
+          setFieldCatalog({ crm_fields: [], lli_fields: [] });
+          setMappingDraft(buildInitialMappingDraft(null, []));
           setLastAppliedCorrectionDraft(null);
         });
       }
@@ -323,7 +365,7 @@ export default function DashboardPage() {
     const payload = {
       item_name_strategy: nextDraft.item_name_strategy,
       columns: Object.fromEntries(
-        Object.entries(nextDraft.columns).filter(([, value]) => value.trim() !== ""),
+        Object.entries(nextDraft.columns).filter(([, value]) => String(value ?? "").trim() !== ""),
       ),
     };
     const result = await fetchJson(crmAdapterBaseUrl, "/mapping", {
@@ -333,7 +375,7 @@ export default function DashboardPage() {
 
     startTransition(() => {
       setMapping(result);
-      setMappingDraft(buildInitialMappingDraft(result.mapping));
+      setMappingDraft(buildInitialMappingDraft(result.mapping, fieldCatalog.lli_fields ?? []));
       setValidation(result.validation ?? null);
       if (options.rememberPreviousDraft) {
         setLastAppliedCorrectionDraft(options.rememberPreviousDraft);
@@ -414,6 +456,9 @@ export default function DashboardPage() {
   );
   const scanBlocked = !validation?.can_start_scan;
   const latestLead = lastRunSummary?.leads?.[0] ?? null;
+  const crmFields = fieldCatalog.crm_fields ?? [];
+  const lliFields = fieldCatalog.lli_fields ?? [];
+  const itemNameStrategies = DEFAULT_ITEM_NAME_STRATEGIES;
 
   return (
     <main className="page dashboard-page">
@@ -465,9 +510,7 @@ export default function DashboardPage() {
           <div className="validation-summary-row">
             <div>
               <strong>{formatIssueCount(validation?.summary)}</strong>
-              <span>
-                {validation?.preview ? "Preview only" : "Live configuration"}
-              </span>
+              <span>{validation?.preview ? "Preview only" : "Live configuration"}</span>
             </div>
             <div>
               <strong>{validation?.state?.mapping?.mapped_field_count ?? 0}</strong>
@@ -567,7 +610,7 @@ export default function DashboardPage() {
         <article className="panel mapping-card">
           <h2>Lead delivery mapping</h2>
           <p className="status ready">{mapping?.mapping?.item_name_strategy ?? "Not configured"}</p>
-          <p>{mapping ? formatColumnSummary(mapping.mapping) : "Select a destination board to persist mapping."}</p>
+          <p>{mapping ? formatColumnSummary(mapping.mapping, lliFields) : "Select a destination board to persist mapping."}</p>
         </article>
 
         <article className="panel scan-card">
@@ -639,10 +682,7 @@ export default function DashboardPage() {
           <form className="auth-form" onSubmit={handleBoardSelect}>
             <label>
               Choose Monday board
-              <select
-                value={selectedBoardId}
-                onChange={(event) => setSelectedBoardId(event.target.value)}
-              >
+              <select value={selectedBoardId} onChange={(event) => setSelectedBoardId(event.target.value)}>
                 <option value="">Select a board</option>
                 {boards.map((board) => (
                   <option key={board.id} value={board.id}>
@@ -657,9 +697,14 @@ export default function DashboardPage() {
           </form>
         </article>
 
-        <article className="panel mapping-editor-card">
+        <article className="panel mapping-editor-card mapping-editor-card--full">
           <div className="section-heading">
-            <h2>Mapping editor</h2>
+            <div>
+              <h2>Configurable owner field mapping</h2>
+              <p className="subtle mapping-editor-subtitle">
+                Match the broker&apos;s CRM fields to the LLI owner-data contract with descriptions and examples so onboarding stays repeatable.
+              </p>
+            </div>
             {lastAppliedCorrectionDraft ? (
               <button type="button" className="secondary-button" onClick={handleUndoCorrections}>
                 Revert auto-fixes
@@ -675,31 +720,64 @@ export default function DashboardPage() {
                   setMappingDraft((current) => ({ ...current, item_name_strategy: event.target.value }))
                 }
               >
-                <option value="deceased_name_county">deceased_name_county</option>
-                <option value="deceased_name_only">deceased_name_only</option>
-                <option value="deceased_name_address">deceased_name_address</option>
+                {itemNameStrategies.map((strategy) => (
+                  <option key={strategy} value={strategy}>
+                    {strategy}
+                  </option>
+                ))}
               </select>
             </label>
-            <div className="mapping-grid">
-              {MAPPING_FIELDS.map((field) => (
-                <label key={field}>
-                  {field}
-                  <input
-                    type="text"
-                    placeholder="column_id"
-                    value={mappingDraft.columns[field] ?? ""}
-                    onChange={(event) =>
-                      setMappingDraft((current) => ({
-                        ...current,
-                        columns: {
-                          ...current.columns,
-                          [field]: event.target.value,
-                        },
-                      }))
-                    }
-                  />
-                </label>
-              ))}
+
+            <div className="mapping-catalog-layout">
+              <section className="mapping-catalog-panel crm-catalog-panel">
+                <div className="mapping-catalog-header">
+                  <h3>Available CRM fields</h3>
+                  <span>{crmFields.length} found</span>
+                </div>
+                <ul className="crm-field-list">
+                  {crmFields.length > 0 ? (
+                    crmFields.map((field) => (
+                      <li key={field.id} className="crm-field-card">
+                        <div className="crm-field-card__row">
+                          <strong>{field.label}</strong>
+                          <span className="pill">{field.type}</span>
+                        </div>
+                        <p className="crm-field-id">{field.id}</p>
+                        <p>{field.description}</p>
+                        {field.example ? <p className="crm-field-example">Example: {field.example}</p> : null}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="crm-field-card empty-state">Select a destination board to load CRM fields.</li>
+                  )}
+                </ul>
+              </section>
+
+              <section className="mapping-catalog-panel lli-catalog-panel">
+                <div className="mapping-catalog-header">
+                  <h3>LLI required owner fields</h3>
+                  <span>{lliFields.length} configurable</span>
+                </div>
+                <div className="mapping-grid mapping-grid-rich">
+                  {lliFields.map((field) => (
+                    <MappingFieldCard
+                      key={field.key}
+                      field={field}
+                      value={mappingDraft.columns[field.key] ?? ""}
+                      crmFields={crmFields}
+                      onChange={(value) =>
+                        setMappingDraft((current) => ({
+                          ...current,
+                          columns: {
+                            ...current.columns,
+                            [field.key]: value,
+                          },
+                        }))
+                      }
+                    />
+                  ))}
+                </div>
+              </section>
             </div>
             <button type="submit" disabled={savingMapping}>
               {savingMapping ? "Saving mapping..." : "Save mapping"}

@@ -12,6 +12,7 @@ const {
 } = require("./ownerRecord");
 const { createDefaultMapping, DEFAULT_TENANT_ID, FileTokenStore } = require("./tokenStore");
 const {
+  FIELD_METADATA,
   buildValidationResponse,
   normalizeMappingInput,
   validateMondaySetup,
@@ -737,6 +738,26 @@ function createApp(options = {}) {
       tenant_id: tenantId,
       board_id: state.board.id,
       mapping: state.board_mapping ?? createDefaultMapping(),
+      field_catalog: {
+        crm_fields: (state.board?.columns ?? []).map((column) => ({
+          id: String(column.id),
+          label: column.title ?? String(column.id),
+          type: column.type ?? "unknown",
+          description: `CRM field available on ${state.board?.name ?? "the selected board"}.`,
+          example: column.settings_str ? `Monday settings: ${String(column.settings_str).slice(0, 120)}` : null,
+        })),
+        lli_fields: Object.entries(FIELD_METADATA).map(([key, metadata]) => ({
+          key,
+          label: metadata.label,
+          description: metadata.description ?? null,
+          example: metadata.example ?? null,
+          source_hint: metadata.sourceHint ?? null,
+          recommended_types: metadata.recommendedTypes ?? [],
+          aliases: metadata.aliases ?? [],
+          required: ["deceased_name", "owner_name", "obituary_url", "match_score", "tier"].includes(key),
+          mapped_column_id: state.board_mapping?.columns?.[key] ?? null,
+        })),
+      },
     });
   });
 
@@ -764,6 +785,26 @@ function createApp(options = {}) {
       board_id: state.board.id,
       mapping: persistedState.board_mapping,
       validation,
+      field_catalog: {
+        crm_fields: (persistedState.board?.columns ?? []).map((column) => ({
+          id: String(column.id),
+          label: column.title ?? String(column.id),
+          type: column.type ?? "unknown",
+          description: `CRM field available on ${persistedState.board?.name ?? "the selected board"}.`,
+          example: column.settings_str ? `Monday settings: ${String(column.settings_str).slice(0, 120)}` : null,
+        })),
+        lli_fields: Object.entries(FIELD_METADATA).map(([key, metadata]) => ({
+          key,
+          label: metadata.label,
+          description: metadata.description ?? null,
+          example: metadata.example ?? null,
+          source_hint: metadata.sourceHint ?? null,
+          recommended_types: metadata.recommendedTypes ?? [],
+          aliases: metadata.aliases ?? [],
+          required: ["deceased_name", "owner_name", "obituary_url", "match_score", "tier"].includes(key),
+          mapped_column_id: persistedState.board_mapping?.columns?.[key] ?? null,
+        })),
+      },
     });
   });
 

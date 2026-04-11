@@ -73,6 +73,48 @@ test("renders validation status, previews mapping edits, and runs the obituary s
         tenant_id: "pilot",
         board_id: "board-1",
         mapping: state.mapping,
+        field_catalog: {
+          crm_fields: [
+            { id: "name", label: "Name", type: "text", description: "CRM field available on Pilot Leads.", example: null },
+            { id: "status", label: "Status", type: "status", description: "CRM field available on Pilot Leads.", example: null },
+            { id: "obit_link", label: "Obituary Link", type: "link", description: "CRM field available on Pilot Leads.", example: null },
+          ],
+          lli_fields: [
+            {
+              key: "deceased_name",
+              label: "Deceased name",
+              description: "Primary decedent name that appears in the obituary and becomes the anchor for the delivered lead.",
+              example: "Pat Example",
+              source_hint: "Usually comes from a CRM person/contact full-name field or a normalized decedent name field.",
+              recommended_types: ["text", "long_text", "name"],
+              aliases: ["deceased name", "decedent", "name"],
+              required: true,
+              mapped_column_id: state.mapping.columns.deceased_name ?? null,
+            },
+            {
+              key: "tier",
+              label: "Tier",
+              description: "LLI priority tier for the resulting lead based on signal strength and urgency.",
+              example: "hot",
+              source_hint: "Map to a priority, temperature, or lead-tier field if one exists.",
+              recommended_types: ["status", "dropdown", "text"],
+              aliases: ["tier", "priority", "lead tier"],
+              required: true,
+              mapped_column_id: state.mapping.columns.tier ?? null,
+            },
+            {
+              key: "obituary_url",
+              label: "Obituary URL",
+              description: "Canonical link back to the obituary page used for review and auditability.",
+              example: "https://example.com/obituaries/pat-example",
+              source_hint: "Map from a URL/link field whenever the CRM stores direct source links.",
+              recommended_types: ["link"],
+              aliases: ["obituary url", "obituary link", "obit url", "obit link", "obit"],
+              required: true,
+              mapped_column_id: state.mapping.columns.obituary_url ?? null,
+            },
+          ],
+        },
       });
     }
 
@@ -220,7 +262,7 @@ test("renders validation status, previews mapping edits, and runs the obituary s
   expect(screen.getByRole("heading", { name: /pre-scan validator/i })).toBeInTheDocument();
   expect(screen.getByText(/0 errors · 0 warnings/i)).toBeInTheDocument();
 
-  fireEvent.change(screen.getByLabelText(/^obituary_url$/i), {
+  fireEvent.change(screen.getByLabelText(/^CRM field for obituary_url$/i), {
     target: { value: "obit_link" },
   });
 

@@ -351,3 +351,133 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.mapping-editor-card--full {
+  grid-column: 1 / -1;
+}
+
+.mapping-editor-subtitle {
+  margin: 6px 0 0;
+}
+
+.mapping-catalog-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.mapping-catalog-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.mapping-catalog-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.mapping-catalog-header h3 {
+  margin: 0;
+}
+
+.crm-field-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.crm-field-card,
+.mapping-field-card {
+  border-radius: 18px;
+  border: 1px solid rgba(19, 33, 43, 0.08);
+  background: rgba(255, 255, 255, 0.86);
+  padding: 16px;
+}
+
+.crm-field-card.empty-state {
+  color: #6a7b86;
+}
+
+.crm-field-card__row,
+.mapping-field-card__title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.crm-field-id,
+.mapping-field-key {
+  margin: 6px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  color: #54656f;
+}
+
+.crm-field-example,
+.mapping-field-description {
+  color: #44545d;
+}
+
+.mapping-grid-rich {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.mapping-field-card.required {
+  border-color: rgba(13, 92, 99, 0.18);
+  box-shadow: 0 0 0 1px rgba(13, 92, 99, 0.05) inset;
+}
+
+.mapping-field-card h3 {
+  margin: 0;
+}
+
+.mapping-field-meta {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.mapping-field-meta div {
+  display: grid;
+  gap: 4px;
+}
+
+.mapping-field-meta dt {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6a7b86;
+}
+
+.mapping-field-meta dd {
+  margin: 0;
+  color: #13212b;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(19, 33, 43, 0.08);
+  color: #13212b;
+  font-size: 0.82rem;
+}
+
+.pill-required {
+  background: rgba(13, 92, 99, 0.12);
+  color: #0d5c63;
+}
+
+@media (max-width: 900px) {
+  .mapping-catalog-layout {
+    grid-template-columns: 1fr;
+  }
+}

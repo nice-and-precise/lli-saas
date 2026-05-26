@@ -11,7 +11,7 @@ const {
   normalizeMondayOwnerRecords,
 } = require("./ownerRecord");
 const { createProfilingReport } = require("./profiler");
-const { createDefaultMapping, DEFAULT_TENANT_ID, FileTokenStore } = require("./tokenStore");
+const { createDefaultMapping, DEFAULT_TENANT_ID, createTokenStore } = require("./tokenStore");
 const {
   FIELD_METADATA,
   buildValidationResponse,
@@ -171,7 +171,7 @@ function createRuntimeVisibility({ tokenStore, mondayConfig }) {
   return {
     monday_oauth_configured: Object.values(mondayConfig).every(Boolean),
     source_owner_board_name: SOURCE_OWNER_BOARD_NAME,
-    token_store_path: tokenStore.filePath ?? "memory",
+    token_store_path: tokenStore.filePath ?? tokenStore.label ?? "memory",
   };
 }
 
@@ -278,9 +278,26 @@ function buildPreviewState(state, payload = {}) {
   };
 }
 
+// Env-gated guard for server-to-server endpoints (/owners exposes owner data,
+// /leads writes to Monday). When SERVICE_SHARED_SECRET is set (production),
+// callers must present a matching bearer token — lead-engine sends it on its
+// outbound calls. When unset (local dev/tests), this is a no-op. The OAuth
+// callback and portal-facing read endpoints are intentionally not guarded;
+// portal access is gated by Vercel Deployment Protection at the platform level.
+function requireServiceSecret(req, res, next) {
+  const secret = process.env.SERVICE_SHARED_SECRET;
+  if (!secret) {
+    return next();
+  }
+  if (req.get("authorization") === `Bearer ${secret}`) {
+    return next();
+  }
+  return res.status(401).json({ error: "unauthorized", message: "missing or invalid service credentials" });
+}
+
 function createApp(options = {}) {
   const app = express();
-  const tokenStore = options.tokenStore ?? new FileTokenStore();
+  const tokenStore = options.tokenStore ?? createTokenStore();
   const mondayConfig = {
     MONDAY_CLIENT_ID: options.clientId ?? process.env.MONDAY_CLIENT_ID ?? "",
     MONDAY_CLIENT_SECRET: options.clientSecret ?? process.env.MONDAY_CLIENT_SECRET ?? "",
@@ -621,7 +638,7 @@ function createApp(options = {}) {
     });
   });
 
-  app.get("/owners", async (req, res) => {
+  app.get("/owners", requireServiceSecret, async (req, res) => {
     const tenantId = getTenantId(req);
     const state = await getPersistedState(tokenStore, tenantId);
     const token = state.tokens?.monday_access_token ?? null;
@@ -873,7 +890,7 @@ function createApp(options = {}) {
     }
   });
 
-  app.post("/leads", async (req, res) => {
+  app.post("/leads", requireServiceSecret, async (req, res) => {
     const tenantId = getTenantId(req);
     const deliveryResult = await deliverLead(tenantId, req.body);
     return res.status(deliveryResult.statusCode).json(deliveryResult.body);

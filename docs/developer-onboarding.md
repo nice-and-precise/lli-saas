@@ -13,7 +13,9 @@ The key constraints are:
 
 ## Prerequisites
 
-1. Install Node.js 20+, Python 3.11+, Docker Desktop, and kubectl.
+1. Install Node.js 20+, Python 3.11+, and Poetry. Docker + kubectl are needed only for the legacy
+   `infra/` self-host path; the pilot deploys on Vercel (see
+   [vercel-deployment.md](vercel-deployment.md)).
 2. Install Poetry if needed:
    - `python3 -m pip install --user poetry`
 3. Clone `nice-and-precise/lli-saas`.
@@ -29,20 +31,28 @@ The key constraints are:
 
 Copy each `.env.example` to `.env` if you need local overrides.
 
+State persistence is selected by `STATE_STORE_BACKEND` (`file` default for local dev, `kv` for
+Vercel/Upstash). The `SERVICE_SHARED_SECRET` inter-service guard is a no-op when unset, so local dev
+needs no secret. Production values are documented in [vercel-deployment.md](vercel-deployment.md).
+
 - `services/lead-engine/.env`
   - `CRM_ADAPTER_BASE_URL`
   - `OBITUARY_ENGINE_BASE_URL`
+  - `SERVICE_SHARED_SECRET` (optional locally)
 - `services/obituary-intelligence-engine/.env`
-  - `OBITUARY_ENGINE_STATE_PATH`
+  - `STATE_STORE_BACKEND` (`file` | `kv`)
+  - `OBITUARY_ENGINE_STATE_PATH` (file backend) / `OBITUARY_ENGINE_KV_KEY` + `KV_REST_API_URL` + `KV_REST_API_TOKEN` (kv backend)
   - `OBITUARY_ENGINE_RETENTION_DAYS`
   - `OBITUARY_HTTP_TIMEOUT_SECONDS`
-  - `GEMINI_API_KEY` or `GOOGLE_API_KEY`
-  - `ANTHROPIC_API_KEY`
+  - `HEIR_EXTRACTION_PRIMARY_PROVIDER` / `_PRIMARY_MODEL` (pilot: `anthropic` via AI Gateway)
+  - `ANTHROPIC_BASE_URL` + `ANTHROPIC_API_KEY` (AI Gateway), or `GEMINI_API_KEY` / `GOOGLE_API_KEY`
 - `services/crm-adapter/.env`
   - `MONDAY_CLIENT_ID`
   - `MONDAY_CLIENT_SECRET`
   - `MONDAY_REDIRECT_URI`
-  - `CRM_ADAPTER_STATE_PATH`
+  - `STATE_STORE_BACKEND` (`file` | `kv`)
+  - `CRM_ADAPTER_STATE_PATH` (file backend) / `CRM_ADAPTER_KV_KEY` + `KV_REST_API_URL` + `KV_REST_API_TOKEN` (kv backend)
+  - `SERVICE_SHARED_SECRET` (optional locally)
 - `services/user-portal/.env`
   - `VITE_CRM_ADAPTER_BASE_URL`
   - `VITE_LEAD_ENGINE_BASE_URL`

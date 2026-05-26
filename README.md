@@ -18,7 +18,11 @@ Start with [docs/README.md](docs/README.md). The detailed architecture source of
 - `services/obituary-intelligence-engine` owns obituary collection, extraction, matching, and tiering
 - `services/crm-adapter` owns Monday OAuth, owner normalization, board mapping, duplicate handling, and delivery
 - `services/user-portal` is the operator UI for board selection, mapping, scan launch, and visibility
-- `infra/` contains Kubernetes manifests, Helm templates, and the daily scan CronJob
+- the pilot is deployed on **Vercel** — see [docs/vercel-deployment.md](docs/vercel-deployment.md)
+  (static portal + three backend functions, state in Vercel KV/Upstash, Anthropic via Vercel AI
+  Gateway, daily scan on Vercel Cron)
+- `infra/` (Kubernetes/Helm + CronJob) is the **legacy / alternative self-host path**, superseded by
+  the Vercel deployment for the pilot
 
 ## Architecture
 
@@ -69,13 +73,14 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    Cron["Daily CronJob<br/>America/Chicago"] --> LE["lead-engine"]
+    Cron["Daily Vercel Cron<br/>0 17 * * * UTC (~12:00 America/Chicago)"] --> LE["lead-engine"]
     UP["user-portal"] --> LE
     LE --> OE["obituary-intelligence-engine"]
     LE --> CA["crm-adapter"]
     CA --> Monday["Monday.com"]
-    CA --- CAPVC["crm-adapter PVC<br/>OAuth + board state + deliveries"]
-    OE --- OEPVC["obituary engine PVC<br/>feed checkpoints + fingerprints"]
+    CA --- CAKV["Vercel KV / Upstash<br/>OAuth + board state + deliveries"]
+    OE --- OEKV["Vercel KV / Upstash<br/>feed checkpoints + fingerprints"]
+    OE --> AIGW["Vercel AI Gateway → Anthropic"]
 ```
 
 ## Canonical Contracts
@@ -93,7 +98,8 @@ The schema artifacts live in [shared/contracts](shared/contracts).
 
 `lli-saas` does not persist the owner corpus or a full obituary warehouse.
 
-It does persist:
+It does persist (in a JSON file locally, or Vercel KV / Upstash in production —
+selected by `STATE_STORE_BACKEND`):
 
 - Monday OAuth/account state
 - selected destination board metadata
@@ -113,6 +119,8 @@ It does persist:
 4. Run the pilot gate before a live rehearsal:
    - `bash scripts/pilot-readiness-check.sh`
 
+To deploy the live pilot, follow [docs/vercel-deployment.md](docs/vercel-deployment.md).
+
 ## Repo Map
 
 - [docs/README.md](docs/README.md) — documentation index
@@ -121,6 +129,7 @@ It does persist:
 - [docs/developer-onboarding.md](docs/developer-onboarding.md) — local setup and service startup
 - [docs/pilot-release-checklist.md](docs/pilot-release-checklist.md) — pre-pilot gate
 - [docs/pilot-runbook-david-whitaker.md](docs/pilot-runbook-david-whitaker.md) — operator runbook
+- [docs/vercel-deployment.md](docs/vercel-deployment.md) — live Vercel deployment (canonical for the pilot)
 - [services/lead-engine/README.md](services/lead-engine/README.md) — orchestrator service doc
 - [services/obituary-intelligence-engine/README.md](services/obituary-intelligence-engine/README.md) — obituary service doc
 - [services/crm-adapter/README.md](services/crm-adapter/README.md) — Monday adapter doc

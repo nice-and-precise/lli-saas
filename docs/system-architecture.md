@@ -42,16 +42,21 @@ flowchart TB
 
 ## Deployment Footprint
 
+The pilot deploys on **Vercel** (portal as a static site, the three backends as Vercel functions),
+with durable state in **Vercel KV / Upstash** instead of PVCs and the daily scan on **Vercel Cron**.
+See [vercel-deployment.md](vercel-deployment.md). The PVC/CronJob topology below describes the legacy
+`infra/` Kubernetes self-host path; the KV nodes are PVCs in that path.
+
 ```mermaid
 flowchart TB
     subgraph Runtime["Pilot Deployment"]
-      Cron["CronJob<br/>daily lead scan<br/>America/Chicago"]
+      Cron["Vercel Cron<br/>daily lead scan<br/>0 17 * * * UTC"]
       LE["lead-engine"]
       OE["obituary-intelligence-engine"]
       CA["crm-adapter"]
       UP["user-portal"]
-      CAPVC["crm-adapter PVC"]
-      OEPVC["obituary-engine PVC"]
+      CAKV["crm-adapter state<br/>(Vercel KV / Upstash)"]
+      OEKV["obituary-engine state<br/>(Vercel KV / Upstash)"]
     end
 
     Cron --> LE
@@ -60,8 +65,8 @@ flowchart TB
     LE --> OE
     LE --> CA
     CA --> Monday["Monday.com"]
-    CA --- CAPVC
-    OE --- OEPVC
+    CA --- CAKV
+    OE --- OEKV
 ```
 
 ## Components

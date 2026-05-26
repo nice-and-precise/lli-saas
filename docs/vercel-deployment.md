@@ -23,8 +23,10 @@ deploy from `requirements.txt` + the `[tool.vercel] entrypoint` in
 
 ## Prerequisites (one-time)
 
-1. **Plan tier**: confirm the team is **Pro** (`vercel.json` sets
-   `maxDuration: 800`; Hobby caps at 60s and scans will time out).
+1. **Plan tier**: Hobby caps function `maxDuration` at **60s** (what `vercel.json` currently sets) and
+   is **non-commercial only**. For real daily scans + client use, upgrade to **Pro** and raise
+   `maxDuration` to `800` in the two Python `vercel.json` files. On Hobby, constrain scans (short
+   lookback / small `owner_limit`) so they finish within 60s.
 2. **Vercel KV (Upstash Redis)**: create one KV store via the Vercel dashboard
    marketplace and connect it to `lli-crm-adapter` and `lli-obituary-engine`.
    This injects `KV_REST_API_URL` / `KV_REST_API_TOKEN` into both.

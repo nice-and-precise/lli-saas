@@ -11,6 +11,16 @@ function createDefaultMapping() {
   };
 }
 
+function createDefaultOnboarding() {
+  // Explicit "did we attempt auto-configuration for this tenant" marker. The
+  // orchestrator (`/onboard/auto-provision`) keys idempotency off `auto_provisioned_at`
+  // — NOT off source_board/selected_board being set (those can be non-null from manual
+  // setup or history). The boolean outcomes record what the attempt achieved so a
+  // partial failure is visible (and re-running `/boards/auto-provision-destination` is
+  // the explicit retry).
+  return { auto_provisioned_at: null, source_board_detected: false, destination_provisioned: false };
+}
+
 function createDefaultTenantState(overrides = {}) {
   return {
     tenant_id: DEFAULT_TENANT_ID,
@@ -18,8 +28,12 @@ function createDefaultTenantState(overrides = {}) {
       access_token: null,
       account_id: null,
     },
+    // The owner-records board (input). Separate from selected_board (the leads
+    // destination). Auto-detected on first connect; overridable.
+    source_board: null,
     selected_board: null,
     board_mapping: createDefaultMapping(),
+    onboarding: createDefaultOnboarding(),
     scan_runs: [],
     deliveries: [],
     ...overrides,
@@ -33,8 +47,14 @@ function normalizeTenantState(tenantState = {}) {
       access_token: tenantState.oauth?.access_token ?? null,
       account_id: tenantState.oauth?.account_id ?? null,
     },
+    source_board: tenantState.source_board ?? null,
     selected_board: tenantState.selected_board ?? null,
     board_mapping: tenantState.board_mapping ?? createDefaultMapping(),
+    onboarding: {
+      auto_provisioned_at: tenantState.onboarding?.auto_provisioned_at ?? null,
+      source_board_detected: tenantState.onboarding?.source_board_detected ?? false,
+      destination_provisioned: tenantState.onboarding?.destination_provisioned ?? false,
+    },
     scan_runs: Array.isArray(tenantState.scan_runs) ? tenantState.scan_runs : [],
     deliveries: Array.isArray(tenantState.deliveries) ? tenantState.deliveries : [],
   };
@@ -48,8 +68,10 @@ function normalizeState(rawState = {}) {
       access_token: rawState.tokens?.monday_access_token ?? null,
       account_id: rawState.account_id ?? null,
     },
+    source_board: rawState.source_board ?? null,
     selected_board: rawState.board ?? null,
     board_mapping: rawState.board_mapping ?? createDefaultMapping(),
+    onboarding: rawState.onboarding ?? createDefaultOnboarding(),
     scan_runs: rawState.scan_runs ?? [],
     deliveries: rawState.deliveries ?? [],
   });
@@ -68,6 +90,9 @@ function normalizeState(rawState = {}) {
         existingTenants[tenantId]?.oauth?.access_token ?? legacyTenant.oauth.access_token ?? null,
     },
     board: existingTenants[tenantId]?.selected_board ?? legacyTenant.selected_board ?? null,
+    source_board: existingTenants[tenantId]?.source_board ?? legacyTenant.source_board ?? null,
+    onboarding:
+      existingTenants[tenantId]?.onboarding ?? legacyTenant.onboarding ?? createDefaultOnboarding(),
     board_mapping:
       existingTenants[tenantId]?.board_mapping ?? legacyTenant.board_mapping ?? createDefaultMapping(),
     account_id: existingTenants[tenantId]?.oauth?.account_id ?? legacyTenant.oauth.account_id ?? null,
@@ -94,6 +119,19 @@ function mergeTenantState(currentTenantState, partialTenantState = {}) {
               ...partialTenantState.selected_board,
             }
           : currentTenantState.selected_board,
+    source_board:
+      partialTenantState.source_board === null
+        ? null
+        : partialTenantState.source_board
+          ? {
+              ...(currentTenantState.source_board ?? {}),
+              ...partialTenantState.source_board,
+            }
+          : currentTenantState.source_board,
+    onboarding: {
+      ...(currentTenantState.onboarding ?? createDefaultOnboarding()),
+      ...(partialTenantState.onboarding ?? {}),
+    },
     board_mapping:
       partialTenantState.board_mapping === null
         ? createDefaultMapping()
@@ -138,8 +176,10 @@ class MemoryTokenStore {
           partialState.tokens?.monday_access_token ?? partialState.oauth?.access_token ?? undefined,
         account_id: partialState.account_id ?? partialState.oauth?.account_id ?? undefined,
       },
+      source_board: partialState.source_board,
       selected_board: partialState.board ?? partialState.selected_board,
       board_mapping: partialState.board_mapping,
+      onboarding: partialState.onboarding,
       scan_runs: partialState.scan_runs,
       deliveries: partialState.deliveries,
     });
@@ -168,8 +208,10 @@ class MemoryTokenStore {
     return {
       tokens: { ...this.state.tokens },
       board: this.state.board ? { ...this.state.board } : null,
+      source_board: this.state.source_board ? { ...this.state.source_board } : null,
       account_id: this.state.account_id,
       board_mapping: this.state.board_mapping,
+      onboarding: { ...(this.state.onboarding ?? createDefaultOnboarding()) },
       active_tenant_id: this.state.active_tenant_id,
       tenants: structuredClone(this.state.tenants),
       scan_runs: [...this.state.scan_runs],
@@ -227,8 +269,10 @@ class PersistentTokenStore {
           partialState.tokens?.monday_access_token ?? partialState.oauth?.access_token ?? undefined,
         account_id: partialState.account_id ?? partialState.oauth?.account_id ?? undefined,
       },
+      source_board: partialState.source_board,
       selected_board: partialState.board ?? partialState.selected_board,
       board_mapping: partialState.board_mapping,
+      onboarding: partialState.onboarding,
       scan_runs: partialState.scan_runs,
       deliveries: partialState.deliveries,
     });

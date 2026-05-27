@@ -153,6 +153,30 @@ so they rely on Vercel Deployment Protection (Password) being enabled:
 - `x-tenant-id` is client-controlled; fine for the single-tenant pilot, but bind it
   to an authenticated principal before onboarding a second tenant.
 
+## Auto-onboarding (zero-config Monday setup)
+
+After a user connects Monday, onboarding configures itself — the operator doesn't pick boards or map
+fields. The portal calls `POST /onboard/auto-provision` once on the first connected dashboard load
+(gated client-side on `token_present && !onboarding.auto_provisioned_at` from `GET /status`). That
+endpoint, on the crm-adapter:
+- **auto-detects the owner source board** — `detectOwnerSourceBoard` (in `ownerRecord.js`) scores each
+  Monday board by land-specific column signals (county/state/acres/parcel/operator weigh more than the
+  generic default "Name"); the best board is persisted as tenant `source_board`. `GET /owners` reads it
+  (falling back to the legacy `Clients` name). Override: `POST /boards/select-source`.
+- **auto-creates the destination board** — `POST /boards/auto-provision-destination` finds-or-creates a
+  **"Land Legacy Leads"** board with one correctly-typed column per `FIELD_METADATA` field
+  (`recommendedTypes[0]` → Monday `ColumnType`; `name`→`text`), and builds the field→column mapping
+  directly. Idempotent (find-or-create by name/title) — it is the explicit retry path.
+- **stamps `onboarding.auto_provisioned_at`** after the attempt (recording `source_board_detected` /
+  `destination_provisioned`) so it runs at most once automatically; best-effort, so a Monday hiccup
+  degrades gracefully instead of breaking the dashboard load.
+
+Tenant state (`tokenStore.js`) gained `source_board` and `onboarding`. Known small-window race: two
+near-simultaneous first loads could both create columns before either persists — `validateBoardMapping`
+catches a resulting duplicate-column-id mapping (a retryable 500), acceptable for the single-operator
+pilot. Status/dropdown columns created via API have no predefined labels; if live delivery ever errors
+on a status column, the one-line fallback is mapping that type to `text` in `RECOMMENDED_TYPE_TO_MONDAY_COLUMN`.
+
 ## Gotcha: crm-adapter framework preset must be "Other" (null)
 
 If Vercel sets the `lli-crm-adapter` project's **Framework Preset** to **Express**, it builds a second

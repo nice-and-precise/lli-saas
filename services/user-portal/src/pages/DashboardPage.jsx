@@ -16,6 +16,10 @@ const DEFAULT_ITEM_NAME_STRATEGIES = [
   "deceased_name_address",
 ];
 
+// Guards the one-time auto-provision POST against double-fire (StrictMode double
+// mount / overlapping refreshes) so we never create duplicate Monday boards.
+let autoProvisionInFlight = false;
+
 async function fetchJson(baseUrl, path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     headers: {
@@ -307,7 +311,7 @@ export default function DashboardPage() {
   const [importResult, setImportResult] = useState(null);
   const [pipelineMetrics, setPipelineMetrics] = useState(null);
 
-  async function refreshDashboard() {
+  async function refreshDashboard(skipAutoProvision = false) {
     setLoading(true);
     setError("");
 
@@ -324,8 +328,33 @@ export default function DashboardPage() {
         throw statusPayload.reason;
       }
 
+      // Auto-onboarding: on the first connected load (Monday token present, not yet
+      // auto-provisioned), run server-side setup — detect the owner board + build the
+      // leads board + map fields — then reload once to render the set-up state.
+      // Best-effort + gated by the server's marker, so it runs at most once per tenant;
+      // the recursion guard prevents any loop. Failures never block the dashboard.
+      const statusValue = statusPayload.value;
+      if (
+        !skipAutoProvision &&
+        !autoProvisionInFlight &&
+        statusValue?.token_present &&
+        !statusValue?.onboarding?.auto_provisioned_at
+      ) {
+        // Module-level in-flight guard so a double-mount / overlapping refresh can't
+        // fire the provision POST twice (which could create duplicate boards).
+        autoProvisionInFlight = true;
+        try {
+          await fetchJson(crmAdapterBaseUrl, "/onboard/auto-provision", { method: "POST" });
+          return await refreshDashboard(true);
+        } catch (_onboardError) {
+          console.warn("auto-provision failed; rendering un-provisioned state", _onboardError);
+        } finally {
+          autoProvisionInFlight = false;
+        }
+      }
+
       startTransition(() => {
-        setStatus(statusPayload.value);
+        setStatus(statusValue);
       });
 
       if (mappingResult.status === "fulfilled") {
@@ -357,7 +386,7 @@ export default function DashboardPage() {
       } else {
         startTransition(() => {
           setBoards([]);
-          setSelectedBoardId(statusPayload.value.board?.id ?? "");
+          setSelectedBoardId(statusValue.board?.id ?? "");
         });
       }
 
@@ -455,6 +484,23 @@ export default function DashboardPage() {
       setError(requestError.message);
     } finally {
       setSavingBoard(false);
+    }
+  }
+
+  async function handleSourceBoardSelect(boardId) {
+    if (!boardId) {
+      return;
+    }
+    setError("");
+    try {
+      const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
+      await fetchJson(crmAdapterBaseUrl, "/boards/select-source", {
+        method: "POST",
+        body: JSON.stringify({ board_id: boardId }),
+      });
+      await refreshDashboard(true);
+    } catch (requestError) {
+      setError(requestError.message);
     }
   }
 
@@ -571,6 +617,8 @@ export default function DashboardPage() {
   }
 
   const selectedBoard = status?.board?.name ?? "No destination board selected";
+  const sourceBoard = status?.source_board ?? null;
+  const autoProvisioned = Boolean(status?.onboarding?.auto_provisioned_at);
   const deliveryCount = status?.deliveries?.length ?? 0;
   const latestDelivery = status?.latest_delivery;
   const latestLeadSummary = latestDelivery?.summary ?? null;
@@ -646,7 +694,46 @@ export default function DashboardPage() {
 
       {justConnected ? (
         <section className="panel success-panel" role="status">
-          <p>✅ Monday.com connected. Import your owners below, then run a scan.</p>
+          <p>
+            ✅ Monday.com connected.{" "}
+            {autoProvisioned && sourceBoard
+              ? "We set everything up for you — detected your owner board, built your “Land Legacy Leads” board, and mapped the fields. Just run a scan."
+              : autoProvisioned
+                ? "We built your “Land Legacy Leads” board and mapped the fields. We couldn’t auto-detect a landowner board — import a CSV below or pick one in “Owner source board.”"
+                : "Import your owners below, then run a scan."}
+          </p>
+        </section>
+      ) : null}
+
+      {mondayConnected && autoProvisioned ? (
+        <section className="panel" aria-label="Owner source board">
+          <h2>Owner source board</h2>
+          {sourceBoard ? (
+            <p className="lede">
+              Reading landowners from your <strong>{sourceBoard.name}</strong> board automatically — no
+              CSV needed. Wrong board? Pick another below.
+            </p>
+          ) : (
+            <p className="lede">
+              We couldn’t auto-detect a landowner board in your workspace. Use{" "}
+              <strong>Import your owners</strong> below to create one from a CSV, or pick a board here.
+            </p>
+          )}
+          <label>
+            Owner source
+            <select
+              aria-label="Owner source board"
+              value={sourceBoard?.id ?? ""}
+              onChange={(event) => handleSourceBoardSelect(event.target.value)}
+            >
+              <option value="">{sourceBoard ? "Keep current" : "Select a board"}</option>
+              {boards.map((board) => (
+                <option key={board.id} value={board.id}>
+                  {board.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </section>
       ) : null}
 

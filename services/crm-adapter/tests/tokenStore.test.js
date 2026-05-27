@@ -63,6 +63,32 @@ describe("FileTokenStore", () => {
     expect(tenantState.deliveries).toEqual([{ delivery_id: "delivery-1", status: "created" }]);
   });
 
+  it("persists the source board and onboarding marker round-trip", async () => {
+    const filePath = path.join(os.tmpdir(), `lli-saas-source-state-${Date.now()}.json`);
+    const store = new FileTokenStore({ filePath });
+
+    const provisionedAt = "2026-05-27T12:00:00.000Z";
+    await store.saveTenantState(DEFAULT_TENANT_ID, {
+      source_board: { id: "src-1", name: "Clients" },
+      onboarding: { auto_provisioned_at: provisionedAt },
+    });
+
+    const state = await store.getState();
+    const tenantState = await store.getTenantState(DEFAULT_TENANT_ID);
+
+    // Surfaced both at the top level (read by /owners) and on the tenant.
+    expect(state.source_board).toEqual({ id: "src-1", name: "Clients" });
+    expect(state.onboarding.auto_provisioned_at).toBe(provisionedAt);
+    expect(tenantState.source_board).toEqual({ id: "src-1", name: "Clients" });
+
+    // Selecting a destination board later must not wipe the source board.
+    await store.saveTenantState(DEFAULT_TENANT_ID, { board: { id: "dest-1", name: "Land Legacy Leads" } });
+    const after = await store.getState();
+    expect(after.source_board).toEqual({ id: "src-1", name: "Clients" });
+    expect(after.board).toEqual({ id: "dest-1", name: "Land Legacy Leads" });
+    expect(after.onboarding.auto_provisioned_at).toBe(provisionedAt);
+  });
+
   it("uses CRM_ADAPTER_STATE_PATH when no explicit file path is provided", () => {
     process.env.CRM_ADAPTER_STATE_PATH = "/tmp/lli-saas-crm-adapter-state.json";
 

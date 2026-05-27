@@ -135,9 +135,61 @@ function normalizeMondayOwnerRecords({ boardId, items }) {
   return items.map((item) => mapMondayItemToOwnerRecord({ boardId, item }));
 }
 
+// Land-specific owner signals. These distinguish a real landowner board from any
+// board (every Monday board has a default "Name" column, which alone is weak).
+const STRONG_OWNER_SIGNAL_FIELDS = new Set([
+  "county",
+  "state",
+  "acres",
+  "parcel_ids",
+  "operator_name",
+  "property_address_line_1",
+  "property_city",
+  "property_postal_code",
+  "mailing_state",
+  "mailing_city",
+  "mailing_postal_code",
+]);
+
+// Score one board by how much it looks like an owner-records board, matching its
+// column titles against OWNER_FIELD_ALIASES. Strong land signals weigh 2; the
+// generic owner_name (matches the default "Name" column) weighs 1.
+function scoreOwnerBoard(board) {
+  const columnKeys = new Set(
+    (board?.columns ?? []).map((column) => normalizeLookupKey(column.title)).filter(Boolean),
+  );
+  let score = 0;
+  const matchedFields = [];
+  for (const [field, aliases] of Object.entries(OWNER_FIELD_ALIASES)) {
+    const matched = aliases.some((alias) => columnKeys.has(normalizeLookupKey(alias)));
+    if (!matched) continue;
+    matchedFields.push(field);
+    score += STRONG_OWNER_SIGNAL_FIELDS.has(field) ? 2 : 1;
+  }
+  return { score, matchedFields };
+}
+
+// Rank the connected account's boards and pick the most likely owner source.
+// `minScore` of 2 requires at least one strong land signal, so a board with only
+// the default "Name" column never wins. Returns the best board (or null) plus the
+// full ranking so callers can surface candidates for a manual override.
+function detectOwnerSourceBoard(boards, { minScore = 2 } = {}) {
+  const ranked = (boards ?? [])
+    .map((board) => {
+      const { score, matchedFields } = scoreOwnerBoard(board);
+      return { board, score, matchedFields };
+    })
+    .filter((entry) => entry.score >= minScore)
+    .sort((left, right) => right.score - left.score);
+  return { best: ranked[0]?.board ?? null, ranked };
+}
+
 module.exports = {
+  OWNER_FIELD_ALIASES,
+  detectOwnerSourceBoard,
   getOwnerRecordSchemaPath,
   mapMondayItemToOwnerRecord,
   normalizeMondayOwnerRecords,
+  scoreOwnerBoard,
   validateOwnerRecord,
 };

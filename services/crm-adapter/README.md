@@ -2,6 +2,13 @@
 
 Express Monday adapter for OAuth, source-owner fetch, destination-board mapping, tenant-aware delivery state, and lead delivery for `lli-saas`.
 
+**Auto-onboarding:** `POST /onboard/auto-provision` (called by the portal on first connect) auto-detects
+the owner **source** board (`detectOwnerSourceBoard` scores boards by land columns; persisted as
+`source_board`, overridable via `POST /boards/select-source`) and provisions the destination board +
+mapping (`POST /boards/auto-provision-destination` — creates "Land Legacy Leads" with one typed column
+per LLI field and maps them). Idempotent + best-effort; gated by `onboarding.auto_provisioned_at`.
+`GET /owners` reads the persisted `source_board` (falling back to the legacy `Clients` name).
+
 ## Commands
 
 - Install: `npm install`

@@ -23,20 +23,25 @@ Connect Monday.com, configure the destination lead board, run an obituary scan, 
 
 The portal reads board/status data from `crm-adapter` and launches scans through `lead-engine`. Each scan fetches fresh owner records from the Monday `Clients` board.
 
-## Operator quick-start (3 steps — no setup, no URLs to type)
+## Operator quick-start — basically one step
 
-This is the self-serve path on the live pilot. The dashboard always shows a **"Next step"** cue at the
-top telling you the one thing to do next, so you can follow it without this runbook. Open
-**https://lli.jordandamhof.com** and:
+This is the self-serve path on the live pilot. The dashboard shows a **"Next step"** cue at the top
+telling you the one thing to do next. Open **https://lli.jordandamhof.com** and:
 
-1. **Connect Monday.** Click **Connect Monday** (Step 1 on the dashboard) and authorize the
-   "LLI Lead Engine" app. You're returned to the dashboard with a "✅ Monday.com connected" banner.
-   *(You only do this once.)*
-2. **Import your owners.** In **Import your owners**, upload a CSV of your landowners (a header row
-   with a `name` column, plus optional `county` and `state`). The portal creates and fills your Monday
-   **Clients** board automatically — no manual data entry. (Or pick an existing destination board.)
-3. **Run a scan.** Pick a destination board, then press **Run obituary scan** (defaults work; advanced
-   options are collapsed). Matched, tiered leads are delivered as items on your Monday board.
+1. **Connect Monday.** Click **Connect Monday** and authorize the "LLI Lead Engine" app. *(Once.)*
+2. **That's it — the system auto-configures itself.** On that first connected load it automatically:
+   - **detects the board** in your workspace that holds your landowners (by its columns — county,
+     state, acres, parcel/APN, operator, etc.) and uses it as the owner source — **no CSV needed**;
+   - **creates a clean "Land Legacy Leads" board** with correctly-typed columns for every lead field;
+   - **maps every field** automatically (no manual mapping screen).
+   The dashboard then shows **"You're set up — run a scan,"** the auto-detected owner board (with a
+   dropdown to override), and the new leads board.
+3. **Run a scan.** Press **Run obituary scan** (defaults work). Matched, tiered leads land as items on
+   your **Land Legacy Leads** board.
+
+Fallbacks (rare): if no landowner board is auto-detected, the **Import your owners** CSV panel is the
+deterministic next step (creates a `Clients` board). If the wrong board is detected, change it in the
+**Owner source board** dropdown.
 
 After the first connect, the **daily Vercel Cron** runs a scan automatically (≈12:00 America/Chicago),
 so new leads keep arriving without any action.
@@ -70,19 +75,18 @@ portal). The numbers are stored in Upstash KV, so they persist across deploys.
 3. Open the portal — it lands directly on `/dashboard` (there is no separate login page).
 4. Click **Connect Monday** (or hit `crm-adapter` `/auth/login`) to complete Monday OAuth.
 5. The callback **redirects back to** `/dashboard?connected=1` (a "Monday connected" banner shows).
-6. Confirm `GET /boards` returns the intended destination lead board.
-7. Confirm `GET /owners` returns owner records from the Monday `Clients` board (use the **Import your
-   owners** CSV panel, or `POST /owners/import`, to create + populate that board if it doesn't exist).
-8. Select the destination board.
-9. Review and update the board mapping (use **Apply confident fixes** for the suggested mapping).
-10. Press **Run obituary scan** from the dashboard.
-11. Confirm the dashboard updates with:
-    - delivery history
-    - lead tier
-    - match score
-    - heir count
-    - scan-run status
-12. Verify the created Monday item includes the expected obituary URL, tier, and heir-related fields.
+6. **Auto-onboarding runs once** on this first connected load (the portal calls
+   `POST /onboard/auto-provision`): it auto-detects the owner **source** board, creates the
+   **"Land Legacy Leads"** destination board with typed columns, and auto-maps every field. Idempotent +
+   best-effort (gated by `onboarding.auto_provisioned_at`; a Monday hiccup degrades gracefully and
+   `POST /boards/auto-provision-destination` is the explicit retry).
+7. Confirm `GET /owners` returns owner records from the auto-detected source board (override via
+   `POST /boards/select-source`, or the **Owner source board** dropdown; if none was detected, the
+   **Import your owners** CSV panel / `POST /owners/import` creates a `Clients` board).
+8. (Auto) The destination board + mapping are already set; adjust only if you want to.
+9. Press **Run obituary scan** from the dashboard.
+10. Confirm the dashboard updates with delivery history, lead tier, match score, heir count, scan status.
+11. Verify the created Monday item includes the expected obituary URL, tier, and heir-related fields.
 
 ## Troubleshooting
 

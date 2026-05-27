@@ -1,8 +1,10 @@
 const fs = require("fs");
 
 const {
+  detectOwnerSourceBoard,
   getOwnerRecordSchemaPath,
   normalizeMondayOwnerRecords,
+  scoreOwnerBoard,
 } = require("../src/ownerRecord");
 
 describe("owner record helpers", () => {
@@ -55,5 +57,61 @@ describe("owner record helpers", () => {
         raw_source_ref: "board:clients-board:item:owner-1",
       },
     ]);
+  });
+});
+
+describe("owner source-board detection", () => {
+  // Shapes mirror a real pilot Monday account: a landowner board vs the default
+  // "Welcome to your developer account" board (only the generic Name column).
+  const clientsBoard = {
+    id: "18415000827",
+    name: "Clients",
+    columns: [
+      { id: "name", title: "Name", type: "name" },
+      { id: "county", title: "County", type: "text" },
+      { id: "state", title: "State", type: "text" },
+    ],
+  };
+  const welcomeBoard = {
+    id: "18414986562",
+    name: "Welcome to your developer account",
+    columns: [
+      { id: "name", title: "Name", type: "name" },
+      { id: "files", title: "Files", type: "file" },
+    ],
+  };
+
+  it("scores land-specific signals above the generic Name column", () => {
+    // County (+2) + State (+2) + owner_name via "Name" (+1) = 5.
+    expect(scoreOwnerBoard(clientsBoard).score).toBe(5);
+    // Only the default Name column = owner_name (+1).
+    expect(scoreOwnerBoard(welcomeBoard).score).toBe(1);
+  });
+
+  it("picks the landowner board and never a Name-only board", () => {
+    const { best, ranked } = detectOwnerSourceBoard([welcomeBoard, clientsBoard]);
+    expect(best?.name).toBe("Clients");
+    // The Name-only board is below the minScore=2 threshold, so it isn't a candidate.
+    expect(ranked.map((entry) => entry.board.name)).toEqual(["Clients"]);
+  });
+
+  it("returns no candidate when nothing looks like an owner board", () => {
+    const { best, ranked } = detectOwnerSourceBoard([welcomeBoard]);
+    expect(best).toBeNull();
+    expect(ranked).toHaveLength(0);
+  });
+
+  it("matches owner columns by alias (e.g. APN → parcel_ids, Acreage → acres)", () => {
+    const board = {
+      id: "b1",
+      name: "Land Book",
+      columns: [
+        { id: "apn", title: "APN", type: "text" },
+        { id: "acreage", title: "Acreage", type: "numbers" },
+        { id: "operator", title: "Operator", type: "text" },
+      ],
+    };
+    const { matchedFields } = scoreOwnerBoard(board);
+    expect(matchedFields).toEqual(expect.arrayContaining(["parcel_ids", "acres", "operator_name"]));
   });
 });

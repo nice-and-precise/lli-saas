@@ -598,7 +598,13 @@ async function validateMondaySetup({
     };
   }
 
-  const sourceBoard = boards.find((board) => String(board.name).trim() === sourceBoardName) ?? null;
+  // Prefer the persisted (auto-detected/operator-chosen) source board by id; fall
+  // back to the legacy name match so existing setups keep validating.
+  const persistedSourceId = state.source_board?.id ? String(state.source_board.id) : "";
+  const sourceBoard =
+    (persistedSourceId && boards.find((board) => String(board.id) === persistedSourceId)) ||
+    boards.find((board) => String(board.name).trim() === sourceBoardName) ||
+    null;
   responseState.source_board = sourceBoard
     ? {
         id: String(sourceBoard.id),

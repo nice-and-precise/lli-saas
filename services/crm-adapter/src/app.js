@@ -7,6 +7,7 @@ const {
 } = require("./leadContract");
 const { MondayClient } = require("./mondayClient");
 const {
+  detectOwnerSourceBoard,
   getOwnerRecordSchemaPath,
   normalizeMondayOwnerRecords,
 } = require("./ownerRecord");
@@ -21,6 +22,24 @@ const {
 
 const SOURCE_OWNER_BOARD_NAME = "Clients";
 const MAX_IMPORT_OWNERS = 5000;
+
+// The auto-created destination board for delivered leads.
+const DESTINATION_BOARD_NAME = "Land Legacy Leads";
+
+// Map an LLI field's preferred type (FIELD_METADATA.recommendedTypes[0]) to a
+// creatable Monday ColumnType. "name" is Monday's special default item-name column
+// (one per board, not creatable) → fall back to "text"; the rest are identity.
+const RECOMMENDED_TYPE_TO_MONDAY_COLUMN = {
+  name: "text",
+  text: "text",
+  long_text: "long_text",
+  numbers: "numbers",
+  date: "date",
+  link: "link",
+  checkbox: "checkbox",
+  status: "status",
+  dropdown: "dropdown",
+};
 
 function buildDuplicateKey(value) {
   return String(value ?? "")
@@ -222,7 +241,12 @@ function createStatusSnapshot(state, tenantId) {
   return {
     tenant_id: tenantId,
     board: state.board ?? null,
+    source_board: state.source_board ?? null,
     board_mapping: state.board_mapping ?? createDefaultMapping(),
+    // Lets the portal decide, from one /status read, whether to run auto-onboarding
+    // (connected but not yet provisioned) without firing a write endpoint blindly.
+    token_present: Boolean(state.tokens?.monday_access_token),
+    onboarding: state.onboarding ?? { auto_provisioned_at: null },
     deliveries: state.deliveries ?? [],
     scan_runs: state.scan_runs ?? [],
     latest_delivery: state.deliveries?.[0] ?? null,
@@ -276,6 +300,8 @@ async function getPersistedState(tokenStore, tenantId = DEFAULT_TENANT_ID) {
       },
       account_id: tenantState.oauth?.account_id ?? state.account_id ?? null,
       board: tenantState.selected_board ?? state.board ?? null,
+      source_board: tenantState.source_board ?? state.source_board ?? null,
+      onboarding: tenantState.onboarding ?? state.onboarding ?? { auto_provisioned_at: null },
       board_mapping: tenantState.board_mapping ?? state.board_mapping ?? createDefaultMapping(),
       scan_runs: tenantState.scan_runs ?? state.scan_runs ?? [],
       deliveries: tenantState.deliveries ?? state.deliveries ?? [],
@@ -764,10 +790,19 @@ function createApp(options = {}) {
     } catch (error) {
       return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to query Monday boards"));
     }
-    const sourceBoard = boards.find((board) => String(board.name).trim() === SOURCE_OWNER_BOARD_NAME);
+    // Prefer the persisted (auto-detected or operator-chosen) source board by id;
+    // fall back to the legacy "Clients" name match for back-compat.
+    const persistedSourceId = state.source_board?.id ? String(state.source_board.id) : "";
+    const sourceBoard =
+      (persistedSourceId && boards.find((board) => String(board.id) === persistedSourceId)) ||
+      boards.find((board) => String(board.name).trim() === SOURCE_OWNER_BOARD_NAME) ||
+      null;
 
     if (!sourceBoard) {
-      return res.status(404).json({ error: `${SOURCE_OWNER_BOARD_NAME} board not found` });
+      return res.status(404).json({
+        error: "No owner source board is configured or found",
+        details: `Set a source board (or create a "${SOURCE_OWNER_BOARD_NAME}" board).`,
+      });
     }
 
     let items;
@@ -844,6 +879,205 @@ function createApp(options = {}) {
     return res.json({
       selected_board: persistedState.board,
       tenant_id: tenantId,
+      validation,
+    });
+  });
+
+  // Operator override for the auto-detected owner SOURCE board (the input board the
+  // scan reads landowners from). Mirrors /boards/select but persists `source_board`.
+  app.post("/boards/select-source", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const { board_id: boardId } = req.body ?? {};
+
+    if (typeof boardId !== "string" || boardId.trim() === "") {
+      return res.status(400).json({ error: "board_id is required" });
+    }
+
+    const state = await getPersistedState(tokenStore, tenantId);
+    const token = state.tokens?.monday_access_token ?? null;
+
+    if (!token) {
+      return res.status(409).json({ error: "Monday OAuth token not configured" });
+    }
+
+    let boards;
+    try {
+      boards = await mondayClient.listBoards(token);
+    } catch (error) {
+      return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to query Monday boards"));
+    }
+    const sourceBoard = boards.find((board) => String(board.id) === boardId);
+
+    if (!sourceBoard) {
+      return res.status(404).json({ error: "Board not found" });
+    }
+
+    const persistedState = await tokenStore.saveTenantState(tenantId, {
+      source_board: {
+        id: String(sourceBoard.id),
+        name: sourceBoard.name,
+      },
+    });
+    const validation = await getValidationSnapshot(tenantId, { state: persistedState });
+
+    return res.json({
+      source_board: persistedState.source_board,
+      tenant_id: tenantId,
+      validation,
+    });
+  });
+
+  // Find-or-create the "Land Legacy Leads" destination board with one correctly-typed
+  // column per LLI field, and build the field→column mapping directly (no guessing).
+  // Idempotent: re-running finds the existing board + columns by name and produces the
+  // same mapping. Returns the persisted board (with column types, needed by delivery),
+  // the mapping, and a fresh validation snapshot.
+  async function provisionDestinationBoard(tenantId, token) {
+    const listBoards = async () => mondayClient.listBoards(token);
+    const findBoard = (boards) =>
+      (boards ?? []).find((board) => String(board.name).trim() === DESTINATION_BOARD_NAME) ?? null;
+
+    let board = findBoard(await listBoards());
+    if (!board) {
+      await mondayClient.createBoard({ token, boardName: DESTINATION_BOARD_NAME });
+      board = findBoard(await listBoards());
+    }
+    if (!board) {
+      throw new Error("Failed to create the destination board");
+    }
+    const boardId = String(board.id);
+
+    // Find-or-create each column by lowercased title; track {id,title,type} so the
+    // delivery path can format values by column type.
+    const columnByTitleKey = {};
+    const columns = [];
+    for (const column of board.columns ?? []) {
+      const entry = { id: column.id, title: column.title, type: column.type };
+      columnByTitleKey[String(column.title).toLowerCase()] = entry;
+      columns.push(entry);
+    }
+    const ensureColumn = async (title, columnType) => {
+      const key = title.toLowerCase();
+      if (columnByTitleKey[key]) return columnByTitleKey[key];
+      const created = await mondayClient.createColumn({ token, boardId, title, columnType });
+      const entry = { id: String(created.id), title, type: columnType };
+      columnByTitleKey[key] = entry;
+      columns.push(entry);
+      return entry;
+    };
+
+    const mappingColumns = {};
+    for (const [field, metadata] of Object.entries(FIELD_METADATA)) {
+      const columnType = RECOMMENDED_TYPE_TO_MONDAY_COLUMN[metadata.recommendedTypes?.[0]] ?? "text";
+      const entry = await ensureColumn(metadata.label, columnType);
+      mappingColumns[field] = entry.id;
+    }
+    const mapping = { ...createDefaultMapping(), columns: mappingColumns };
+    validateBoardMapping(mapping);
+
+    return tokenStore.saveTenantState(tenantId, {
+      board: { id: boardId, name: board.name, columns },
+      board_mapping: mapping,
+    });
+  }
+
+  app.post("/boards/auto-provision-destination", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const state = await getPersistedState(tokenStore, tenantId);
+    const token = state.tokens?.monday_access_token ?? null;
+
+    if (!token) {
+      return res.status(409).json({ error: "Monday OAuth token not configured" });
+    }
+
+    let persistedState;
+    try {
+      persistedState = await provisionDestinationBoard(tenantId, token);
+    } catch (error) {
+      return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to provision destination board"));
+    }
+    const validation = await getValidationSnapshot(tenantId, { state: persistedState });
+
+    return res.json({
+      board: persistedState.board,
+      source_board: persistedState.source_board,
+      mapping: persistedState.board_mapping,
+      tenant_id: tenantId,
+      validation,
+    });
+  });
+
+  // One-shot auto-onboarding, called by the portal on the first connected dashboard
+  // load. Best-effort + idempotent: auto-detect the owner source board AND provision
+  // the destination board + mapping, then stamp `auto_provisioned_at` so it never
+  // re-runs automatically (the marker, not board presence, is the gate). Each step is
+  // contained so a Monday hiccup degrades gracefully instead of breaking the load.
+  app.post("/onboard/auto-provision", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const state = await getPersistedState(tokenStore, tenantId);
+    const token = state.tokens?.monday_access_token ?? null;
+
+    if (!token) {
+      return res.status(409).json({ error: "Monday OAuth token not configured" });
+    }
+
+    // Already attempted → return the stored snapshot WITHOUT touching Monday. The
+    // portal makes its own /validation call for the live check.
+    if (state.onboarding?.auto_provisioned_at) {
+      return res.json({
+        already_provisioned: true,
+        tenant_id: tenantId,
+        onboarding: state.onboarding,
+        source_board: state.source_board,
+        board: state.board,
+        mapping: state.board_mapping,
+      });
+    }
+
+    let sourceBoardDetected = false;
+    try {
+      const boards = await mondayClient.listBoards(token);
+      const { best } = detectOwnerSourceBoard(boards);
+      if (best) {
+        await tokenStore.saveTenantState(tenantId, {
+          source_board: { id: String(best.id), name: best.name },
+        });
+        sourceBoardDetected = true;
+      }
+    } catch (error) {
+      // best-effort: leave source_board unset → portal surfaces CSV import as fallback.
+      console.error(`[auto-provision] source-board detection failed tenant=${tenantId}: ${error.message}`);
+    }
+
+    let destinationProvisioned = false;
+    try {
+      await provisionDestinationBoard(tenantId, token);
+      destinationProvisioned = true;
+    } catch (error) {
+      // best-effort: leave destination unset. We do NOT stamp the marker below in this
+      // case, so the next dashboard load retries (self-healing for transient Monday
+      // errors). `/boards/auto-provision-destination` is also the explicit retry.
+      console.error(`[auto-provision] destination provisioning failed tenant=${tenantId}: ${error.message}`);
+    }
+
+    const persistedState = await tokenStore.saveTenantState(tenantId, {
+      onboarding: {
+        // Only mark "done" when the destination is built — a failed attempt stays
+        // unmarked so a reload retries rather than locking the tenant into a broken state.
+        auto_provisioned_at: destinationProvisioned ? new Date().toISOString() : null,
+        source_board_detected: sourceBoardDetected,
+        destination_provisioned: destinationProvisioned,
+      },
+    });
+    const validation = await getValidationSnapshot(tenantId, { state: persistedState });
+
+    return res.json({
+      auto_provisioned: true,
+      tenant_id: tenantId,
+      onboarding: persistedState.onboarding,
+      source_board: persistedState.source_board,
+      board: persistedState.board,
+      mapping: persistedState.board_mapping,
       validation,
     });
   });

@@ -201,6 +201,210 @@ describe("crm-adapter routes", () => {
     });
   });
 
+  it("reads owners from the persisted source board (not the hardcoded Clients name)", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        { id: "welcome-board", name: "Welcome to your developer account", columns: [] },
+        { id: "land-book", name: "Land Book", columns: [{ id: "county", title: "County", type: "text" }] },
+      ]),
+      listBoardItems: vi.fn(async () => [
+        { id: "owner-9", name: "Pat Landowner", column_values: [{ id: "county", text: "Story", column: { title: "County" } }] },
+      ]),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-source-owners-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", {
+      oauth: { access_token: "token-123" },
+      source_board: { id: "land-book", name: "Land Book" },
+    });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).get("/owners?limit=100");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.source_board).toEqual({ id: "land-book", name: "Land Book" });
+    expect(mondayClient.listBoardItems).toHaveBeenCalledWith(
+      expect.objectContaining({ boardId: "land-book" }),
+    );
+    expect(response.body.owners[0].owner_name).toBe("Pat Landowner");
+  });
+
+  // A Monday fake that actually accumulates boards + columns, so we can assert the
+  // auto-provision endpoint is idempotent (no duplicate board/columns on re-run).
+  function makeStatefulMonday(seedBoards = []) {
+    const boards = seedBoards.map((board) => ({ ...board, columns: [...(board.columns ?? [])] }));
+    let boardSeq = 0;
+    let columnSeq = 0;
+    return {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () =>
+        boards.map((board) => ({ ...board, columns: board.columns.map((column) => ({ ...column })) })),
+      ),
+      createBoard: vi.fn(async ({ boardName }) => {
+        const board = { id: `board-${(boardSeq += 1)}`, name: boardName, columns: [] };
+        boards.push(board);
+        return { id: board.id };
+      }),
+      createColumn: vi.fn(async ({ boardId, title, columnType }) => {
+        const board = boards.find((entry) => String(entry.id) === String(boardId));
+        const column = { id: `col-${(columnSeq += 1)}`, title, type: columnType };
+        board.columns.push(column);
+        return { id: column.id };
+      }),
+    };
+  }
+
+  const { FIELD_METADATA } = require("../src/validation");
+  const FIELD_COUNT = Object.keys(FIELD_METADATA).length;
+
+  it("auto-provisions a fully-typed destination board and complete mapping", async () => {
+    const mondayClient = makeStatefulMonday();
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-autoprov-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", { oauth: { access_token: "token-123" } });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/boards/auto-provision-destination");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.board.name).toBe("Land Legacy Leads");
+    // One column per LLI field, every field mapped.
+    expect(Object.keys(response.body.mapping.columns)).toHaveLength(FIELD_COUNT);
+    expect(mondayClient.createBoard).toHaveBeenCalledTimes(1);
+    expect(mondayClient.createColumn).toHaveBeenCalledTimes(FIELD_COUNT);
+
+    // Types are derived correctly (and "name"-preferred fields fall back to text).
+    const typeByColumnId = new Map(response.body.board.columns.map((c) => [c.id, c.type]));
+    expect(typeByColumnId.get(response.body.mapping.columns.obituary_url)).toBe("link");
+    expect(typeByColumnId.get(response.body.mapping.columns.match_score)).toBe("numbers");
+    expect(typeByColumnId.get(response.body.mapping.columns.death_date)).toBe("date");
+    expect(typeByColumnId.get(response.body.mapping.columns.deceased_name)).toBe("text");
+  });
+
+  it("is idempotent — re-running creates no duplicate board or columns (keystone)", async () => {
+    const mondayClient = makeStatefulMonday();
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-autoprov-idem-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", { oauth: { access_token: "token-123" } });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const first = await request(app).post("/boards/auto-provision-destination");
+    const second = await request(app).post("/boards/auto-provision-destination");
+
+    expect(second.statusCode).toBe(200);
+    // Still exactly one board and one column set — no duplication on the second run.
+    expect(mondayClient.createBoard).toHaveBeenCalledTimes(1);
+    expect(mondayClient.createColumn).toHaveBeenCalledTimes(FIELD_COUNT);
+    expect(second.body.board.columns).toHaveLength(first.body.board.columns.length);
+    expect(second.body.mapping.columns).toEqual(first.body.mapping.columns);
+  });
+
+  it("auto-onboards on first connect: detects source, builds destination, stamps marker", async () => {
+    const mondayClient = makeStatefulMonday([
+      {
+        id: "clients-1",
+        name: "Clients",
+        columns: [
+          { id: "name", title: "Name", type: "name" },
+          { id: "county", title: "County", type: "text" },
+          { id: "state", title: "State", type: "text" },
+        ],
+      },
+    ]);
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-onboard-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", { oauth: { access_token: "token-123" } });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const first = await request(app).post("/onboard/auto-provision");
+
+    expect(first.statusCode).toBe(200);
+    expect(first.body.auto_provisioned).toBe(true);
+    expect(first.body.source_board).toEqual({ id: "clients-1", name: "Clients" });
+    expect(first.body.board.name).toBe("Land Legacy Leads");
+    expect(first.body.onboarding.source_board_detected).toBe(true);
+    expect(first.body.onboarding.destination_provisioned).toBe(true);
+    expect(first.body.onboarding.auto_provisioned_at).toBeTruthy();
+
+    // Second call is gated by the marker → returns stored state, no new Monday writes.
+    const createBoardCalls = mondayClient.createBoard.mock.calls.length;
+    const second = await request(app).post("/onboard/auto-provision");
+    expect(second.statusCode).toBe(200);
+    expect(second.body.already_provisioned).toBe(true);
+    expect(mondayClient.createBoard.mock.calls.length).toBe(createBoardCalls);
+  });
+
+  it("auto-onboards with no owner board → source stays null (portal falls back to CSV)", async () => {
+    const mondayClient = makeStatefulMonday([
+      { id: "welcome-1", name: "Welcome to your developer account", columns: [{ id: "name", title: "Name", type: "name" }] },
+    ]);
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-onboard-nosrc-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", { oauth: { access_token: "token-123" } });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/onboard/auto-provision");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.source_board).toBeNull();
+    expect(response.body.onboarding.source_board_detected).toBe(false);
+    // Destination is still built even when no owner board is detected.
+    expect(response.body.board.name).toBe("Land Legacy Leads");
+    expect(response.body.onboarding.destination_provisioned).toBe(true);
+  });
+
+  it("does not stamp the onboarding marker when destination provisioning fails (stays retryable)", async () => {
+    const mondayClient = makeStatefulMonday([
+      { id: "clients-1", name: "Clients", columns: [{ id: "county", title: "County", type: "text" }] },
+    ]);
+    // Simulate a transient Monday outage on board creation.
+    mondayClient.createBoard = vi.fn(async () => {
+      throw new Error("monday 502");
+    });
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-onboard-fail-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", { oauth: { access_token: "token-123" } });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/onboard/auto-provision");
+
+    expect(response.statusCode).toBe(200);
+    // Source detection still succeeded, but destination failed → marker stays null so a
+    // later load retries rather than locking the tenant into a half-built state.
+    expect(response.body.onboarding.source_board_detected).toBe(true);
+    expect(response.body.onboarding.destination_provisioned).toBe(false);
+    expect(response.body.onboarding.auto_provisioned_at).toBeNull();
+  });
+
+  it("persists an operator-chosen source board via /boards/select-source", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        { id: "land-book", name: "Land Book", columns: [{ id: "county", title: "County", type: "text" }] },
+      ]),
+      listBoardItems: vi.fn(async () => []),
+    };
+    const tokenStore = new FileTokenStore({
+      filePath: path.join(os.tmpdir(), `lli-saas-select-source-${Date.now()}.json`),
+    });
+    await tokenStore.saveTenantState("pilot", { oauth: { access_token: "token-123" } });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/boards/select-source").send({ board_id: "land-book" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.source_board).toEqual({ id: "land-book", name: "Land Book" });
+    const persisted = await tokenStore.getState();
+    expect(persisted.source_board).toEqual({ id: "land-book", name: "Land Book" });
+  });
+
   it("rejects invalid lead payloads before Monday delivery", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn(),

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import logging
+import os
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 
 import feedparser
 import requests
+
+logger = logging.getLogger(__name__)
 
 from src.feed_sources import RSSSource, resolve_sources
 from src.normalization import (
@@ -47,9 +52,22 @@ class ObituaryRecord:
 
 
 class ObituaryCollector:
+    # Several obituary sources (Lee Enterprises papers: Waterloo Courier,
+    # Quad-City Times, Sioux City Journal, Globe Gazette) return 429 to the
+    # default python-requests user-agent. A normal browser UA gets 200.
+    _DEFAULT_USER_AGENT = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
+
     def __init__(self, *, http_timeout_seconds: float = 10.0, session: requests.Session | None = None) -> None:
         self.http_timeout_seconds = http_timeout_seconds
         self.session = session or requests.Session()
+        self.session.headers.setdefault("User-Agent", self._DEFAULT_USER_AGENT)
+        self.session.headers.setdefault("Accept", "application/rss+xml, application/xml, text/xml, */*")
+        # Lee Enterprises papers share rate-limited infra and return 429 to a
+        # rapid burst of feed requests. A small delay between sources avoids it.
+        self._inter_source_delay = float(os.getenv("OBITUARY_INTER_SOURCE_DELAY_SECONDS", "1.0"))
 
     def collect(self, *, source_ids: list[str], lookback_days: int) -> list[ObituaryRecord]:
         sources = resolve_sources(source_ids)
@@ -59,8 +77,15 @@ class ObituaryCollector:
             from src.normalization import utcnow
 
             cutoff_date = (utcnow() - timedelta(days=lookback_days)).date()
-        for source in sources:
-            collected.extend(self._collect_source(source, cutoff_date=cutoff_date))
+        for index, source in enumerate(sources):
+            if index > 0 and self._inter_source_delay > 0:
+                time.sleep(self._inter_source_delay)
+            # One dead/blocked feed must not abort the whole scan. Skip sources
+            # that fail to fetch (404, timeout, network error) and continue.
+            try:
+                collected.extend(self._collect_source(source, cutoff_date=cutoff_date))
+            except requests.RequestException as error:
+                logger.warning("Skipping obituary source %s (%s): %s", source.source_id, source.feed_url, error)
         return self._dedupe(collected)
 
     def _collect_source(self, source: RSSSource, *, cutoff_date=None) -> list[ObituaryRecord]:
@@ -116,8 +141,14 @@ class ObituaryCollector:
         return items
 
     def _fetch_page_text(self, url: str) -> str:
-        response = self.session.get(url, timeout=self.http_timeout_seconds)
-        response.raise_for_status()
+        # A single unreachable article page should not drop the obituary; fall
+        # back to the RSS summary text by returning an empty string on error.
+        try:
+            response = self.session.get(url, timeout=self.http_timeout_seconds)
+            response.raise_for_status()
+        except requests.RequestException as error:
+            logger.warning("Failed to fetch obituary page %s: %s", url, error)
+            return ""
         return html_to_text(response.text)
 
     def _dedupe(self, records: list[ObituaryRecord]) -> list[ObituaryRecord]:

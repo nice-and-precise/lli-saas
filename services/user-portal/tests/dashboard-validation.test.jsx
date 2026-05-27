@@ -262,6 +262,9 @@ test("shows pre-scan validation feedback, applies confident corrections, and blo
     expect(screen.getByText(/2 errors · 1 warning/i)).toBeInTheDocument(),
   );
   expect(screen.getByText(/mapped column "namez"/i)).toBeInTheDocument();
+  // The "Next step" cue renders and points at the validator errors in this state.
+  expect(screen.getByText(/Next step/i)).toBeInTheDocument();
+  expect(screen.getByText(/resolve 2 mapping issues/i)).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: /apply 2 confident fixes/i }));
 

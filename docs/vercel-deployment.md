@@ -26,10 +26,20 @@ The obituary engine collects from a curated list of Iowa obituary RSS feeds in
 - **Feed list is an operational item** — feeds rot (404/format changes); re-probe
   periodically with curl_cffi Chrome impersonation. The collector is resilient: any
   source that fails (404/429/timeout/parse) is skipped, never crashing the scan.
-- **Statewide aggregation (Legacy.com)** is browser-only anti-bot and out of reach
-  for the serverless function. The future path is a free GitHub-Actions cron running
-  a browser fetcher (Scrapling `StealthyFetcher`) that writes obituaries to KV for the
-  engine to read — deliberately **not** built for the pilot.
+- **Statewide aggregation via the GitHub Actions prefetch job** (`.github/workflows/
+  obituary-prefetch.yml`, daily 09:00 UTC + manual). It runs off the 60s function
+  clock and sweeps the full RSS set + **Legacy.com Iowa regional pages** (100+
+  funeral-home detail pages) via `prefetch_obituaries.py` → `src/legacy_collector.py`,
+  writing a deduped corpus to KV (`obituary-engine:prefetched`, 3-day TTL). The engine
+  merges that corpus at scan time (`collector.collect()`, gated by
+  `OBITUARY_USE_PREFETCH`, default on). Legacy.com is scraped only on **robots-allowed**
+  regional pages with curl_cffi impersonation — no `/api/` paths, no anti-bot bypass.
+  Requires repo secrets `KV_REST_API_URL` / `KV_REST_API_TOKEN` (set). **GitHub only
+  runs workflows from the default branch, so the daily job activates once PR #16 merges
+  to `main`**; the corpus can be refreshed manually meanwhile by running
+  `python prefetch_obituaries.py` with the KV env vars.
+  - ToS note: Legacy.com's terms may restrict scraping regardless of robots.txt; for
+    production, a licensed obituary data feed is the clean long-term path.
 
 ## Projects (one monorepo → four Vercel projects)
 

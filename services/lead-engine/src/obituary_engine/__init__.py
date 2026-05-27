@@ -15,6 +15,14 @@ def _resolve_base_url(base_url: str | None = None) -> str:
     return resolved.rstrip("/")
 
 
+def _service_headers() -> dict[str, str]:
+    """Send the shared service bearer to the obituary engine's guarded /run-scan
+    when SERVICE_SHARED_SECRET is set. The obituary engine is server-to-server only
+    (the portal never calls it directly), so guarding it doesn't affect onboarding."""
+    secret = os.getenv("SERVICE_SHARED_SECRET")
+    return {"Authorization": f"Bearer {secret}"} if secret else {}
+
+
 class ObituaryEngineError(Exception):
     def __init__(self, code: str, message: str, details: dict | None = None) -> None:
         super().__init__(message)
@@ -65,6 +73,7 @@ class HttpObituaryEngine:
             response = httpx.post(
                 f"{self.base_url}/run-scan",
                 json=payload,
+                headers=_service_headers(),
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()

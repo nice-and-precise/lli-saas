@@ -114,9 +114,28 @@ VITE_LEAD_ENGINE_BASE_URL=https://lead.jordandamhof.com
   Protection → Password** on `lli-crm-adapter` and `lli-lead-engine`. Use
   **Protection Bypass for Automation / public path** so Monday can still reach
   `/auth/callback` (which must stay public).
-- **Server → server** calls (`lead-engine → crm-adapter` `/owners` + `/leads`,
-  and `Cron → lead-engine /run-scan`) are authenticated by `SERVICE_SHARED_SECRET`
-  / `CRON_SECRET`. The guards are no-ops when those vars are unset (local dev).
+- **Server → server** calls — `lead-engine → crm-adapter` (`/owners`, `/leads`),
+  `lead-engine → obituary-engine` (`/run-scan`), and `Cron → lead-engine /run-scan`
+  — are authenticated by `SERVICE_SHARED_SECRET` / `CRON_SECRET`. Set the **same**
+  value on all three backend projects. The guards are no-ops when unset (local dev).
+- **Input bounds:** `/owners/import` caps `owners` at 5000 and validates `board_name`.
+
+### Residual risks (enable Deployment Protection)
+
+These public, browser-called endpoints **cannot** carry a server secret (static SPA),
+so they rely on Vercel Deployment Protection (Password) being enabled:
+
+- `lead-engine POST /run-scan` and `crm-adapter POST /owners/import` are
+  unauthenticated at the app layer (the portal calls them directly). Without
+  Deployment Protection, anyone can trigger scans (AI/HTTP spend, bounded by the
+  obituary caps + dedup) or create boards/items in the connected Monday workspace.
+  **Action: enable Vercel Deployment Protection → Password on `lli-crm-adapter` and
+  `lli-lead-engine`, with a bypass for `/auth/callback` (Monday must reach it).**
+- **OAuth `state` is not yet validated** in `/auth/callback` (login-CSRF / token
+  overwrite). Tracked as a follow-up PR that needs a live OAuth round-trip test
+  before merge (cookie-based `state` check).
+- `x-tenant-id` is client-controlled; fine for the single-tenant pilot, but bind it
+  to an authenticated principal before onboarding a second tenant.
 
 ## Gotcha: crm-adapter framework preset must be "Other" (null)
 

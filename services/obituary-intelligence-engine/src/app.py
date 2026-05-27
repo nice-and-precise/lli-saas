@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 
 from src.contracts import ObituaryEngineRunScanRequest, ObituaryEngineScanResult
 from src.metrics_store import read_all as read_metrics
@@ -10,6 +10,19 @@ from src.service import ObituaryIntelligenceService, get_service
 from src.state_store import ObituaryStateStore
 
 app = FastAPI(title="obituary-intelligence-engine", version="0.1.0")
+
+
+def require_service_secret(authorization: str | None = Header(default=None)) -> None:
+    """Guards /run-scan when SERVICE_SHARED_SECRET is set. The obituary engine is
+    only ever called server-to-server by lead-engine (which sends the bearer), so
+    this protects the direct AI-spend trigger without affecting the portal. No-op
+    when unset (local dev/tests)."""
+    secret = os.getenv("SERVICE_SHARED_SECRET")
+    if not secret:
+        return
+    if authorization == f"Bearer {secret}":
+        return
+    raise HTTPException(status_code=401, detail="missing or invalid service credentials")
 
 
 @app.get("/health")
@@ -58,5 +71,6 @@ def metrics() -> dict[str, object]:
 def run_scan(
     request: ObituaryEngineRunScanRequest,
     service: ObituaryIntelligenceService = Depends(get_service),
+    _: None = Depends(require_service_secret),
 ) -> ObituaryEngineScanResult:
     return service.run_scan(request)

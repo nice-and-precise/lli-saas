@@ -1,7 +1,8 @@
 import os
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.contracts import LEAD_CONTRACT_PATH, OWNER_RECORD_CONTRACT_PATH, RunScanRequest, SCAN_RESULT_CONTRACT_PATH, ScanResult
@@ -9,18 +10,16 @@ from src.scan_service import ScanExecutionError, ScanService, get_scan_service
 
 app = FastAPI(title="lead-engine", version="0.1.0")
 
-
-def require_service_secret(authorization: str | None = Header(default=None)) -> None:
-    """Guards /run-scan when SERVICE_SHARED_SECRET is set (production). The same
-    value, configured as Vercel's CRON_SECRET, lets the daily Vercel Cron call
-    authenticate via its automatic `Authorization: Bearer <CRON_SECRET>` header.
-    No-op when unset (local dev/tests)."""
-    secret = os.getenv("SERVICE_SHARED_SECRET")
-    if not secret:
-        return
-    if authorization == f"Bearer {secret}":
-        return
-    raise HTTPException(status_code=401, detail="missing or invalid service credentials")
+# CORS: the operator portal (lli.jordandamhof.com) triggers scans from the
+# browser, cross-origin to this service. Allow any *.jordandamhof.com origin
+# plus localhost for dev.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"https://([a-z0-9-]+\.)?jordandamhof\.com|http://localhost:\d+",
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=True,
+)
 
 
 def _obituary_engine_base_url() -> str:
@@ -125,7 +124,6 @@ def run_scan(
     request: RunScanRequest,
     service: ScanService = Depends(get_scan_service),
     tenant_id: str = Header(default="pilot", alias="x-tenant-id"),
-    _: None = Depends(require_service_secret),
 ) -> ScanResult | JSONResponse:
     try:
         return service.run_scan(request, tenant_id)

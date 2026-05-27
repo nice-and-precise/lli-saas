@@ -312,6 +312,25 @@ function createApp(options = {}) {
       apiBaseUrl: options.apiBaseUrl ?? process.env.MONDAY_API_BASE_URL,
     });
 
+  // CORS: the operator portal is served from a different subdomain
+  // (lli.jordandamhof.com) than this API, so browser fetches are cross-origin.
+  // Reflect any *.jordandamhof.com origin (and localhost for dev) and answer
+  // preflight requests.
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && /^https:\/\/([a-z0-9-]+\.)?jordandamhof\.com$|^http:\/\/localhost:\d+$/.test(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-tenant-id");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
   app.use(express.json());
 
   async function getValidationSnapshot(tenantId, overrides = {}) {

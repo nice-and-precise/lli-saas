@@ -21,6 +21,26 @@ const {
 
 const SOURCE_OWNER_BOARD_NAME = "Clients";
 const MAX_IMPORT_OWNERS = 5000;
+const OAUTH_STATE_COOKIE = "lli_oauth_state";
+
+function readCookie(req, name) {
+  const header = req.headers.cookie || "";
+  for (const part of header.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) return decodeURIComponent(rest.join("="));
+  }
+  return null;
+}
+
+function isSecureRequest(req) {
+  return Boolean(req.secure) || req.headers["x-forwarded-proto"] === "https";
+}
+
+function oauthStateCookie(req, value, maxAgeSeconds) {
+  const attrs = ["HttpOnly", "SameSite=Lax", "Path=/", `Max-Age=${maxAgeSeconds}`];
+  if (isSecureRequest(req)) attrs.push("Secure");
+  return `${OAUTH_STATE_COOKIE}=${value}; ${attrs.join("; ")}`;
+}
 
 function buildDuplicateKey(value) {
   return String(value ?? "")
@@ -617,17 +637,25 @@ function createApp(options = {}) {
   });
 
   app.get("/auth/login", (req, res) => {
-    const state = req.query.state || "lli-saas-state";
-    const location = mondayClient.getAuthorizationUrl(state);
-    res.redirect(location);
+    // CSRF protection: random state in an HttpOnly cookie, echoed to Monday and
+    // verified on the callback so a forged code can't overwrite the stored token.
+    const state = crypto.randomBytes(16).toString("hex");
+    res.setHeader("Set-Cookie", oauthStateCookie(req, state, 600));
+    res.redirect(mondayClient.getAuthorizationUrl(state));
   });
 
   app.get("/auth/callback", async (req, res) => {
-    const { code } = req.query;
+    const { code, state } = req.query;
 
     if (!code) {
       return res.status(400).json({ error: "Missing OAuth code" });
     }
+
+    const expectedState = readCookie(req, OAUTH_STATE_COOKIE);
+    if (!expectedState || state !== expectedState) {
+      return res.status(400).json({ error: "invalid_oauth_state" });
+    }
+    res.setHeader("Set-Cookie", oauthStateCookie(req, "", 0)); // clear it
 
     try {
       const tokenPayload = await mondayClient.exchangeCodeForToken(code);

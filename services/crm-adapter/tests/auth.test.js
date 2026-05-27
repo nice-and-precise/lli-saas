@@ -105,13 +105,47 @@ describe("crm-adapter routes", () => {
     };
     const app = createApp({ mondayClient, tokenStore });
 
-    const response = await request(app).get("/auth/callback?code=abc123");
+    // Valid callback must carry the state matching the cookie set at /auth/login.
+    const response = await request(app)
+      .get("/auth/callback?code=abc123&state=s123")
+      .set("Cookie", "lli_oauth_state=s123");
 
-    // Callback now redirects the operator back to the portal instead of JSON.
+    // Callback redirects the operator back to the portal instead of JSON.
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe("https://lli.jordandamhof.com/dashboard?connected=1");
     expect(mondayClient.exchangeCodeForToken).toHaveBeenCalledWith("abc123");
     expect(tokenStore.save).toHaveBeenCalledWith("monday_access_token", "token-123");
+  });
+
+  it("rejects /auth/callback when the state does not match the cookie (CSRF guard)", async () => {
+    const mondayClient = {
+      exchangeCodeForToken: vi.fn(),
+      getAuthorizationUrl: vi.fn(),
+    };
+    const app = createApp({ mondayClient, tokenStore: { save: vi.fn() } });
+
+    const response = await request(app)
+      .get("/auth/callback?code=abc123&state=attacker")
+      .set("Cookie", "lli_oauth_state=s123");
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "invalid_oauth_state" });
+    expect(mondayClient.exchangeCodeForToken).not.toHaveBeenCalled();
+  });
+
+  it("sets an HttpOnly state cookie on /auth/login", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(() => "https://auth.monday.com/oauth2/authorize?state=x"),
+    };
+    const app = createApp({ mondayClient, tokenStore: { save: vi.fn() } });
+
+    const response = await request(app).get("/auth/login");
+
+    expect(response.statusCode).toBe(302);
+    const setCookie = response.headers["set-cookie"][0];
+    expect(setCookie).toMatch(/^lli_oauth_state=[a-f0-9]{32}/);
+    expect(setCookie).toContain("HttpOnly");
+    expect(mondayClient.getAuthorizationUrl).toHaveBeenCalled();
   });
 
   it("lists boards using the persisted OAuth token", async () => {

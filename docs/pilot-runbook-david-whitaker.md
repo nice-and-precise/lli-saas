@@ -6,6 +6,16 @@ Connect Monday.com, configure the destination lead board, run an obituary scan, 
 
 ## Services And URLs
 
+**Live pilot (Vercel)** — the production deployment. Provisioning details are in
+[vercel-deployment.md](vercel-deployment.md):
+
+- `user-portal` (operator UI) at `https://lli.jordandamhof.com`
+- `crm-adapter` at `https://crm.jordandamhof.com` (Monday OAuth callback `/auth/callback`)
+- `lead-engine` at `https://lead.jordandamhof.com`
+- `obituary-intelligence-engine` at `https://obit.jordandamhof.com`
+
+**Local development** uses the same flow on localhost:
+
 - `lead-engine` on `http://localhost:8000`
 - `obituary-intelligence-engine` on `http://localhost:8080`
 - `crm-adapter` on `http://localhost:3000`

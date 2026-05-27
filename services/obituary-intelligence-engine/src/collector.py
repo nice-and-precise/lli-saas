@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import logging
+import os
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 
 import feedparser
-import requests
+from curl_cffi import requests as cffi_requests
+
+logger = logging.getLogger(__name__)
 
 from src.feed_sources import RSSSource, resolve_sources
 from src.normalization import (
@@ -47,9 +52,23 @@ class ObituaryRecord:
 
 
 class ObituaryCollector:
-    def __init__(self, *, http_timeout_seconds: float = 10.0, session: requests.Session | None = None) -> None:
+    def __init__(self, *, http_timeout_seconds: float = 10.0, session=None, impersonate: str = "chrome") -> None:
         self.http_timeout_seconds = http_timeout_seconds
-        self.session = session or requests.Session()
+        # curl_cffi with TLS/JA3 browser impersonation. The Lee Enterprises BLOX
+        # feeds (Waterloo Courier, Quad-City Times, Sioux City Journal, Globe
+        # Gazette, Muscatine Journal) return 429 to a default client but serve
+        # 200 under Chrome impersonation — the fingerprint, not just the UA, is
+        # what their anti-bot checks. (Tests inject a duck-typed fake session.)
+        self.session = session or cffi_requests.Session(impersonate=impersonate)
+        # Impersonation defeats the burst-429s, so only a light politeness delay.
+        self._inter_source_delay = float(os.getenv("OBITUARY_INTER_SOURCE_DELAY_SECONDS", "0.15"))
+        # Cap entries parsed per source so a high-volume feed (e.g. Carroll
+        # Broadcasting publishes ~200) can't blow the serverless time budget.
+        self._max_entries_per_source = int(os.getenv("OBITUARY_MAX_ENTRIES_PER_SOURCE", "6"))
+        # Hard cap on total obituaries per scan. Each obituary may trigger a
+        # full-page fetch (~1s), so this keeps a run well under Vercel's 60s cap
+        # while still spreading coverage across many sources.
+        self._max_total = int(os.getenv("OBITUARY_MAX_TOTAL_OBITUARIES", "36"))
 
     def collect(self, *, source_ids: list[str], lookback_days: int) -> list[ObituaryRecord]:
         sources = resolve_sources(source_ids)
@@ -59,8 +78,29 @@ class ObituaryCollector:
             from src.normalization import utcnow
 
             cutoff_date = (utcnow() - timedelta(days=lookback_days)).date()
-        for source in sources:
-            collected.extend(self._collect_source(source, cutoff_date=cutoff_date))
+        for index, source in enumerate(sources):
+            if len(collected) >= self._max_total:
+                break
+            if index > 0 and self._inter_source_delay > 0:
+                time.sleep(self._inter_source_delay)
+            # One dead/blocked feed must not abort the whole scan. Skip sources
+            # that fail for any reason (404/429/timeout/network/parse) and continue.
+            try:
+                collected.extend(self._collect_source(source, cutoff_date=cutoff_date))
+            except Exception as error:  # noqa: BLE001 - resilience: never let one source crash the scan
+                logger.warning("Skipping obituary source %s (%s): %s: %s", source.source_id, source.feed_url, type(error).__name__, error)
+
+        # Merge the statewide corpus pre-collected by the GitHub Actions job
+        # (Legacy.com + full feed sweep) from KV. Heavy collection runs there,
+        # off the 60s function clock; here we just add the records and match.
+        if os.getenv("OBITUARY_USE_PREFETCH", "1").lower() not in ("0", "false", "no"):
+            from src.prefetch_store import read_prefetched
+
+            prefetched = read_prefetched()
+            if prefetched:
+                logger.info("Merged %d prefetched obituaries from KV corpus", len(prefetched))
+                collected.extend(prefetched)
+
         return self._dedupe(collected)
 
     def _collect_source(self, source: RSSSource, *, cutoff_date=None) -> list[ObituaryRecord]:
@@ -69,7 +109,7 @@ class ObituaryCollector:
         feed = feedparser.parse(response.text)
         items: list[ObituaryRecord] = []
 
-        for entry in feed.entries:
+        for entry in feed.entries[: self._max_entries_per_source]:
             link = canonicalize_url(getattr(entry, "link", "").strip())
             title = normalize_whitespace(html_to_text(getattr(entry, "title", "")))
             if not link or not title:
@@ -116,8 +156,14 @@ class ObituaryCollector:
         return items
 
     def _fetch_page_text(self, url: str) -> str:
-        response = self.session.get(url, timeout=self.http_timeout_seconds)
-        response.raise_for_status()
+        # A single unreachable article page should not drop the obituary; fall
+        # back to the RSS summary text by returning an empty string on error.
+        try:
+            response = self.session.get(url, timeout=self.http_timeout_seconds)
+            response.raise_for_status()
+        except Exception as error:  # noqa: BLE001 - fall back to RSS summary on any page-fetch error
+            logger.warning("Failed to fetch obituary page %s: %s", url, error)
+            return ""
         return html_to_text(response.text)
 
     def _dedupe(self, records: list[ObituaryRecord]) -> list[ObituaryRecord]:

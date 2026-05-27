@@ -1,0 +1,5 @@
+# Vercel's Python runtime installs from requirements.txt (not poetry).
+# Mirrors the runtime deps in pyproject.toml; uvicorn is omitted because Vercel
+# provides the ASGI server.
+fastapi>=0.115,<0.116
+httpx>=0.28,<0.29

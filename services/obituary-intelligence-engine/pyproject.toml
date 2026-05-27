@@ -17,9 +17,14 @@ lxml = "^5.3.1"
 nameparser = "^1.1.3"
 rapidfuzz = "^3.11.0"
 requests = "^2.32.3"
+curl_cffi = ">=0.7,<1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
+
+[tool.vercel]
+# Vercel serves this FastAPI ASGI app; src/ is on sys.path so `from src...` works.
+entrypoint = "src.app:app"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

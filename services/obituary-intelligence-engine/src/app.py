@@ -25,11 +25,14 @@ def health() -> dict[str, object]:
 
 @app.get("/ready")
 def ready() -> dict[str, object]:
-    state_path = ObituaryStateStore().path
+    store = ObituaryStateStore()
+    # `.path` is set only for the file backend; KV reports its label instead.
+    state_location = str(store.path.parent) if store.path is not None else store.backend.label
     return {
         "status": "ready",
         "service": "obituary-intelligence-engine",
-        "state_directory": str(state_path.parent),
+        "state_backend": store.backend.label,
+        "state_directory": state_location,
     }
 
 

@@ -14,6 +14,10 @@ uvicorn = { extras = ["standard"], version = "^0.34.0" }
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
 
+[tool.vercel]
+# Vercel serves this FastAPI ASGI app; src/ is on sys.path so `from src...` works.
+entrypoint = "src.app:app"
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 

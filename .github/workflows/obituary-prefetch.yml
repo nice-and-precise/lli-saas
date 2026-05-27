@@ -1,0 +1,36 @@
+name: Obituary prefetch (statewide corpus to KV)
+
+# Builds the statewide Iowa obituary corpus (full RSS sweep + Legacy.com regional
+# pages) off the 60s Vercel clock and writes it to KV. The obituary-engine merges
+# this corpus at scan time. See docs/vercel-deployment.md.
+# Security note: this workflow consumes only repository secrets and static config
+# (no untrusted github.event inputs), so there is no workflow-injection surface.
+
+on:
+  schedule:
+    - cron: "0 9 * * *" # 09:00 UTC daily (~3-4am America/Chicago), before the noon scan
+  workflow_dispatch: {}
+
+jobs:
+  prefetch:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/obituary-intelligence-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Collect obituaries and write KV corpus
+        env:
+          KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
+          KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
+          # Lift the in-function budget caps - GitHub Actions has no 60s limit.
+          OBITUARY_MAX_ENTRIES_PER_SOURCE: "25"
+          OBITUARY_MAX_TOTAL_OBITUARIES: "600"
+          OBITUARY_INTER_SOURCE_DELAY_SECONDS: "0.5"
+          PREFETCH_LOOKBACK_DAYS: "10"
+        run: python prefetch_obituaries.py

@@ -13,6 +13,17 @@ def _resolve_base_url(base_url: str | None = None) -> str:
     return (base_url or os.getenv("CRM_ADAPTER_BASE_URL", "")).rstrip("/")
 
 
+def _service_headers(tenant_id: str) -> dict[str, str]:
+    """Outbound headers for crm-adapter calls. Adds the shared service bearer
+    token when SERVICE_SHARED_SECRET is set (production), so crm-adapter's
+    guarded /owners and /leads endpoints accept the request."""
+    headers = {"x-tenant-id": tenant_id}
+    secret = os.getenv("SERVICE_SHARED_SECRET")
+    if secret:
+        headers["Authorization"] = f"Bearer {secret}"
+    return headers
+
+
 class CRMAdapterError(Exception):
     def __init__(self, code: str, message: str, details: dict | None = None, status_code: int = 502) -> None:
         super().__init__(message)
@@ -38,7 +49,7 @@ class CRMAdapterClient:
             response = httpx.get(
                 f"{self.base_url}/owners",
                 params={"limit": owner_limit},
-                headers={"x-tenant-id": tenant_id},
+                headers=_service_headers(tenant_id),
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()
@@ -79,7 +90,7 @@ class CRMAdapterClient:
             response = httpx.post(
                 f"{self.base_url}/leads",
                 json=lead.model_dump(mode="json"),
-                headers={"x-tenant-id": tenant_id},
+                headers=_service_headers(tenant_id),
                 timeout=self.timeout_seconds,
             )
             payload = response.json()

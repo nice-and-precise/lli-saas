@@ -1,6 +1,11 @@
 # infra
 
-Infrastructure assets for the current `lli-saas` pilot deployment path.
+> **Status: legacy / alternative self-host path.** The Whitaker pilot is deployed on **Vercel** —
+> see [docs/vercel-deployment.md](../docs/vercel-deployment.md). These Kubernetes/Helm assets are kept
+> as a portable self-host option and are **not** the path used for the pilot. Where this directory and
+> the Vercel deployment doc disagree, the Vercel doc wins for the pilot.
+
+Infrastructure assets for the Kubernetes/Helm self-host deployment path.
 
 ## Contents
 

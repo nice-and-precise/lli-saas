@@ -191,18 +191,23 @@ class MemoryTokenStore {
   }
 }
 
-class FileTokenStore {
-  constructor(options = {}) {
-    this.filePath =
-      options.filePath ??
-      process.env.CRM_ADAPTER_STATE_PATH ??
-      DEFAULT_STATE_PATH;
+// Shared persistence logic for any durable backend. Subclasses implement only
+// the raw read/write primitives (`_readRaw`/`_writeRaw`); everything above —
+// token access, tenant merging, normalization — lives here so the file and KV
+// adapters can never drift apart.
+class PersistentTokenStore {
+  async _readRaw() {
+    throw new Error("_readRaw not implemented");
+  }
+
+  async _writeRaw(_state) {
+    throw new Error("_writeRaw not implemented");
   }
 
   async save(key, token) {
     const state = await this.getState();
     state.tokens[key] = token;
-    await this.#writeState(state);
+    await this._writeRaw(state);
     return token;
   }
 
@@ -237,27 +242,13 @@ class FileTokenStore {
       updated_at: new Date().toISOString(),
     });
 
-    await this.#writeState(nextState);
+    await this._writeRaw(nextState);
     return nextState;
   }
 
   async getState() {
-    try {
-      const raw = await fs.readFile(this.filePath, "utf-8");
-      const parsed = JSON.parse(raw);
-      return normalizeState(parsed);
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        return normalizeState();
-      }
-
-      throw error;
-    }
-  }
-
-  async #writeState(state) {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(state, null, 2), "utf-8");
+    const raw = await this._readRaw();
+    return normalizeState(raw ?? undefined);
   }
 
   async getTenantState(tenantId = DEFAULT_TENANT_ID) {
@@ -273,10 +264,90 @@ class FileTokenStore {
   }
 }
 
+class FileTokenStore extends PersistentTokenStore {
+  constructor(options = {}) {
+    super();
+    this.filePath =
+      options.filePath ??
+      process.env.CRM_ADAPTER_STATE_PATH ??
+      DEFAULT_STATE_PATH;
+  }
+
+  async _readRaw() {
+    try {
+      return JSON.parse(await fs.readFile(this.filePath, "utf-8"));
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  async _writeRaw(state) {
+    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+    await fs.writeFile(this.filePath, JSON.stringify(state, null, 2), "utf-8");
+  }
+}
+
+// Vercel functions have no persistent filesystem, so production state lives in
+// Upstash Redis (provisioned via the Vercel KV marketplace integration, which
+// injects KV_REST_API_URL / KV_REST_API_TOKEN). `@upstash/redis` is required
+// lazily so the file/memory adapters work without the dependency installed.
+class KvTokenStore extends PersistentTokenStore {
+  constructor(options = {}) {
+    super();
+    this.label = "kv";
+    this.key = options.key ?? process.env.CRM_ADAPTER_KV_KEY ?? "crm-adapter:state";
+    this._client = options.client ?? null;
+  }
+
+  _redis() {
+    if (!this._client) {
+      const { Redis } = require("@upstash/redis");
+      // Construct explicitly from the KV_* vars the Vercel/Upstash integration
+      // injects (Redis.fromEnv() instead expects UPSTASH_REDIS_REST_* names).
+      this._client = new Redis({
+        url: process.env.KV_REST_API_URL,
+        token: process.env.KV_REST_API_TOKEN,
+      });
+    }
+    return this._client;
+  }
+
+  async _readRaw() {
+    // @upstash/redis auto-deserializes JSON values, returning the object or null.
+    return (await this._redis().get(this.key)) ?? null;
+  }
+
+  async _writeRaw(state) {
+    await this._redis().set(this.key, state);
+  }
+}
+
+// Selects the backend from STATE_STORE_BACKEND (default "file" so local dev and
+// the existing test suite keep working unchanged).
+function createTokenStore(options = {}) {
+  const backend = (options.backend ?? process.env.STATE_STORE_BACKEND ?? "file").toLowerCase();
+  switch (backend) {
+    case "kv":
+      return new KvTokenStore(options);
+    case "memory":
+      return new MemoryTokenStore();
+    case "file":
+    default:
+      return new FileTokenStore(options);
+  }
+}
+
 module.exports = {
   DEFAULT_STATE_PATH,
   DEFAULT_TENANT_ID,
   FileTokenStore,
+  KvTokenStore,
   MemoryTokenStore,
+  PersistentTokenStore,
+  createTokenStore,
   createDefaultMapping,
 };

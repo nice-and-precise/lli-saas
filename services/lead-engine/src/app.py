@@ -2,12 +2,24 @@ import os
 
 import httpx
 from fastapi import Depends, FastAPI, Header
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.contracts import LEAD_CONTRACT_PATH, OWNER_RECORD_CONTRACT_PATH, RunScanRequest, SCAN_RESULT_CONTRACT_PATH, ScanResult
 from src.scan_service import ScanExecutionError, ScanService, get_scan_service
 
 app = FastAPI(title="lead-engine", version="0.1.0")
+
+# CORS: the operator portal (lli.jordandamhof.com) triggers scans from the
+# browser, cross-origin to this service. Allow any *.jordandamhof.com origin
+# plus localhost for dev.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"https://([a-z0-9-]+\.)?jordandamhof\.com|http://localhost:\d+",
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=True,
+)
 
 
 def _obituary_engine_base_url() -> str:

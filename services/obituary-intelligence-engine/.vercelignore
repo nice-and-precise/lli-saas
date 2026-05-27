@@ -1,0 +1,8 @@
+# Hide the poetry-style pyproject from Vercel's Python builder so it installs
+# via pip + requirements.txt (uv lock requires a PEP 621 [project] table, which
+# the poetry format lacks). The FastAPI app is auto-detected at src/app.py.
+pyproject.toml
+poetry.lock
+.venv
+tests
+data

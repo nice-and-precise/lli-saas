@@ -2,7 +2,7 @@
 
 This is the live-deployment path for the Whitaker pilot: the whole stack runs on
 Vercel — a static portal plus three backend services as Vercel functions, with
-state in Upstash Redis (Vercel KV), Anthropic via Vercel AI Gateway, and the
+state in Upstash Redis (Vercel KV), LLM heir extraction via Google Gemini, and the
 daily scan on Vercel Cron. No separate server is required.
 
 > The Kubernetes/Helm manifests under [`infra/`](../infra/) are the **legacy /
@@ -63,7 +63,9 @@ deploy from `requirements.txt` + the `[tool.vercel] entrypoint` in
 2. **Vercel KV (Upstash Redis)**: create one KV store via the Vercel dashboard
    marketplace and connect it to `lli-crm-adapter` and `lli-obituary-engine`.
    This injects `KV_REST_API_URL` / `KV_REST_API_TOKEN` into both.
-3. **AI Gateway key**: Vercel dashboard → AI Gateway → create a key.
+3. **Heir-extraction LLM key**: a Google **Gemini** API key (`GEMINI_API_KEY`) is the
+   deployed choice — direct, no gateway, no credit card. (Alternative: a Vercel **AI
+   Gateway** key for Anthropic, but the gateway requires a credit card on the account.)
 4. **Monday OAuth app**: at `developer.monday.com`, create an app with OAuth,
    redirect URI `https://crm.jordandamhof.com/auth/callback`, scopes
    `boards:read`, `boards:write`, `me:read`. Capture Client ID + Secret.
@@ -93,12 +95,17 @@ CRON_SECRET=<same random>   # lets the daily Vercel Cron authenticate to /run-sc
 `lli-obituary-engine`
 ```
 STATE_STORE_BACKEND=kv
-HEIR_EXTRACTION_PRIMARY_PROVIDER=anthropic
-HEIR_EXTRACTION_PRIMARY_MODEL=anthropic/claude-sonnet-4.5
-ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh
-ANTHROPIC_API_KEY=<AI Gateway key>
+# Heir extraction (LLM). Deployed config: a direct Google Gemini key — the
+# extractor's default primary provider is gemini-2.5-flash, no gateway/card needed.
+GEMINI_API_KEY=<Google Gemini API key>
 OBITUARY_ENGINE_RETENTION_DAYS=30
 # KV_REST_API_URL / KV_REST_API_TOKEN injected by the KV integration
+# Alternative (instead of GEMINI_API_KEY): route Anthropic through Vercel AI Gateway —
+#   HEIR_EXTRACTION_PRIMARY_PROVIDER=anthropic
+#   HEIR_EXTRACTION_PRIMARY_MODEL=anthropic/claude-sonnet-4.5
+#   ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh
+#   ANTHROPIC_API_KEY=<AI Gateway key>   # note: AI Gateway requires a credit card on the Vercel account
+# The extractor falls back to rule-based heuristics if no key/provider is reachable.
 ```
 
 `lli-portal` (build-time)
@@ -134,10 +141,15 @@ so they rely on Vercel Deployment Protection (Password) being enabled:
   obituary caps + dedup) or create boards/items in the connected Monday workspace.
   **Action: enable Vercel Deployment Protection → Password on `lli-crm-adapter` and
   `lli-lead-engine`, with a bypass for `/auth/callback` (Monday must reach it).**
-- **OAuth `state` validation** (login-CSRF / token overwrite): the cookie-based
-  `state` check is implemented and tested in an **open PR** (`sec/oauth-state-validation`),
-  held from merge until a live Monday OAuth round-trip confirms Monday preserves the
-  `state` param through the redirect. Merge + deploy `crm-adapter` after that passes.
+- **OAuth `state` validation** (login-CSRF / token overwrite): **DEFERRED.** Both a
+  cookie-based and a stateless HMAC-signed `state` check were built (PR
+  `sec/oauth-state-validation`) and tested live — both rejected real connects with
+  `invalid_oauth_state`, because monday's callback does not return the `state` param
+  we sent the way its docs imply (or alters it). prod is rolled back to no `state`
+  check so the connect flow works. Low practical risk for the single-tenant pilot.
+  To resume: add temporary request logging on `/auth/callback` to capture the exact
+  query params monday sends, confirm `state` presence/integrity, then adjust before
+  redeploying. Do **not** redeploy that branch until then.
 - `x-tenant-id` is client-controlled; fine for the single-tenant pilot, but bind it
   to an authenticated principal before onboarding a second tenant.
 
@@ -169,4 +181,5 @@ acceptable for the pilot.
 - End-to-end: portal → Monday OAuth → board select → mapping → run scan → a real
   item lands on the Monday destination board (see
   [pilot-runbook-david-whitaker.md](pilot-runbook-david-whitaker.md)).
-- Anthropic traffic appears in the Vercel AI Gateway overview.
+- Heir-extraction LLM calls go to Google Gemini (`gemini-2.5-flash`); on any failure
+  the extractor falls back to rule-based heuristics, so scans never block on the LLM.

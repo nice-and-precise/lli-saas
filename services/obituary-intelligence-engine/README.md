@@ -78,5 +78,5 @@ Backend selected by `STATE_STORE_BACKEND` (`file` default for local dev; `kv` = 
 
 ## Notes
 
-- Heir extraction routes Anthropic through the Vercel AI Gateway (`ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh`). Without provider keys, the service falls back to its heuristic extractor.
+- Heir extraction (deployed): a direct Google **Gemini** key (`GEMINI_API_KEY`), default provider `gemini-2.5-flash`. Alternatively route Anthropic through the Vercel AI Gateway (`ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh` + `ANTHROPIC_API_KEY`; the gateway requires a credit card on the Vercel account). Without any provider key, the service falls back to its heuristic extractor.
 - The service emits canonical `Lead[]` directly; `lead-engine` does not translate a legacy payload anymore.

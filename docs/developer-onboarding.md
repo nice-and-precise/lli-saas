@@ -44,8 +44,9 @@ needs no secret. Production values are documented in [vercel-deployment.md](verc
   - `OBITUARY_ENGINE_STATE_PATH` (file backend) / `OBITUARY_ENGINE_KV_KEY` + `KV_REST_API_URL` + `KV_REST_API_TOKEN` (kv backend)
   - `OBITUARY_ENGINE_RETENTION_DAYS`
   - `OBITUARY_HTTP_TIMEOUT_SECONDS`
-  - `HEIR_EXTRACTION_PRIMARY_PROVIDER` / `_PRIMARY_MODEL` (pilot: `anthropic` via AI Gateway)
-  - `ANTHROPIC_BASE_URL` + `ANTHROPIC_API_KEY` (AI Gateway), or `GEMINI_API_KEY` / `GOOGLE_API_KEY`
+  - `HEIR_EXTRACTION_PRIMARY_PROVIDER` / `_PRIMARY_MODEL` (pilot default: `gemini` / `gemini-2.5-flash`)
+  - `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) — deployed choice; or route Anthropic via AI Gateway with
+    `ANTHROPIC_BASE_URL` + `ANTHROPIC_API_KEY`. No key → rule-based heuristic fallback.
 - `services/crm-adapter/.env`
   - `MONDAY_CLIENT_ID`
   - `MONDAY_CLIENT_SECRET`

@@ -25,7 +25,9 @@ class FileStateBackend:
 
     def __init__(self, path: str | None = None) -> None:
         self.path = Path(path or os.getenv("OBITUARY_ENGINE_STATE_PATH") or DEFAULT_STATE_PATH)
-        self.label = str(self.path)
+        # A non-sensitive backend name for health/ready; the actual filesystem path
+        # stays internal (kept on `.path`) and is not exposed over HTTP.
+        self.label = "file"
 
     def read(self) -> dict | None:
         if not self.path.exists():

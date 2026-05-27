@@ -233,7 +233,8 @@ function createRuntimeVisibility({ tokenStore, mondayConfig }) {
   return {
     monday_oauth_configured: Object.values(mondayConfig).every(Boolean),
     source_owner_board_name: SOURCE_OWNER_BOARD_NAME,
-    token_store_path: tokenStore.filePath ?? tokenStore.label ?? "memory",
+    // Backend name only ("file"/"kv"/"memory") — never the filesystem path.
+    token_store: tokenStore.label ?? "memory",
   };
 }
 

@@ -113,6 +113,7 @@ function mergeTenantState(currentTenantState, partialTenantState = {}) {
 
 class MemoryTokenStore {
   constructor() {
+    this.label = "memory";
     this.tokens = new Map();
     this.state = normalizeState();
   }
@@ -267,6 +268,7 @@ class PersistentTokenStore {
 class FileTokenStore extends PersistentTokenStore {
   constructor(options = {}) {
     super();
+    this.label = "file";
     this.filePath =
       options.filePath ??
       process.env.CRM_ADAPTER_STATE_PATH ??

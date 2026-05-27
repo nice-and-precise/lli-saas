@@ -493,6 +493,20 @@ def test_metrics_endpoint_shape(monkeypatch) -> None:
     assert body["totals"]["days_tracked"] == 0
 
 
+def test_health_and_ready_report_backend_label_not_filesystem_path(monkeypatch) -> None:
+    # File backend on a revealing path: neither endpoint may echo the path.
+    monkeypatch.setenv("STATE_STORE_BACKEND", "file")
+    monkeypatch.setenv("OBITUARY_ENGINE_STATE_PATH", "/secret/internal/dir/state.json")
+    from src.app import app
+
+    client = TestClient(app)
+    for path in ("/health", "/ready"):
+        body = client.get(path).json()
+        assert body["state_backend"] == "file"
+        assert "/secret/internal/dir" not in str(body)
+        assert "state_path" not in body and "state_directory" not in body
+
+
 def test_metrics_leads_delivered_endpoint_is_noop_without_kv(monkeypatch) -> None:
     # No service secret + no KV: the endpoint accepts the report and no-ops the write.
     monkeypatch.delenv("SERVICE_SHARED_SECRET", raising=False)

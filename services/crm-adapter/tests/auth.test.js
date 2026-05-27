@@ -88,7 +88,7 @@ describe("crm-adapter routes", () => {
       service: "crm-adapter",
       monday_oauth_configured: true,
       source_owner_board_name: SOURCE_OWNER_BOARD_NAME,
-      token_store_path: tokenStore.filePath,
+      token_store: "file",
     });
   });
 

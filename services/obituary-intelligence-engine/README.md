@@ -44,6 +44,10 @@ Iowa obituary-intelligence service for `lli-saas`.
   - basic process health
 - `GET /ready`
   - state-path readiness
+- `GET /metrics`
+  - daily pipeline metrics: obituaries scanned per day (with per-source breakdown) and leads, plus
+    totals — the measure-progress surface. Recorded by the daily prefetch job; backfilled from
+    published dates on first run. Stored in KV (`OBITUARY_METRICS_KEY`).
 
 ## Lead Contract Validation
 
@@ -63,7 +67,7 @@ Backend selected by `STATE_STORE_BACKEND` (`file` default for local dev; `kv` = 
 
 ## Environment
 
-- State: `STATE_STORE_BACKEND`, `OBITUARY_ENGINE_STATE_PATH`, `OBITUARY_ENGINE_KV_KEY`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `OBITUARY_ENGINE_RETENTION_DAYS`
+- State: `STATE_STORE_BACKEND`, `OBITUARY_ENGINE_STATE_PATH`, `OBITUARY_ENGINE_KV_KEY`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `OBITUARY_ENGINE_RETENTION_DAYS`, `OBITUARY_METRICS_KEY`
 - Collection: `OBITUARY_HTTP_TIMEOUT_SECONDS`, `OBITUARY_MAX_ENTRIES_PER_SOURCE`, `OBITUARY_MAX_TOTAL_OBITUARIES`, `OBITUARY_INTER_SOURCE_DELAY_SECONDS`, `OBITUARY_USE_PREFETCH`, `OBITUARY_PREFETCH_KEY`
 - Heir extraction: `HEIR_EXTRACTION_{PRIMARY,FALLBACK,FINAL}_{PROVIDER,MODEL}`, `ANTHROPIC_BASE_URL` (Vercel AI Gateway), `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`
 

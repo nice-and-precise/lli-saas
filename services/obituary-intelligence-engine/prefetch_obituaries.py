@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections import Counter
 from datetime import datetime, timezone
 
 # This job WRITES the corpus; it must not try to read+merge it while collecting.
@@ -20,6 +21,7 @@ os.environ["OBITUARY_USE_PREFETCH"] = "0"
 
 from src.collector import ObituaryCollector, ObituaryRecord  # noqa: E402
 from src.legacy_collector import LegacyObituaryCollector  # noqa: E402
+from src.metrics_store import backfill_from_records, record_daily  # noqa: E402
 from src.prefetch_store import write_prefetched  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -44,6 +46,15 @@ def main() -> None:
 
     count = write_prefetched(records, collected_at=datetime.now(timezone.utc).isoformat())
     logger.info("Wrote %d deduped obituaries to KV (rss=%d legacy=%d)", count, len(rss), len(legacy))
+
+    # Record today's run and backfill the last 7 days (by published date) so the
+    # daily obituaries-scanned metric is populated and trendable from day one.
+    today = datetime.now(timezone.utc).date().isoformat()
+    by_source = dict(Counter(record.source_id for record in records))
+    record_daily(today, obituaries=count, by_source=by_source, kind="run")
+    backfilled = backfill_from_records(records, days=7)
+    logger.info("metrics: recorded run %s=%d; backfilled %s", today, count, sorted(backfilled))
+
     print(f"prefetch complete: wrote {count} obituaries (rss={len(rss)} legacy={len(legacy)})")
 
 

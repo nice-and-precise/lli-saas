@@ -5,6 +5,7 @@ import os
 from fastapi import Depends, FastAPI
 
 from src.contracts import ObituaryEngineRunScanRequest, ObituaryEngineScanResult
+from src.metrics_store import read_all as read_metrics
 from src.service import ObituaryIntelligenceService, get_service
 from src.state_store import ObituaryStateStore
 
@@ -33,6 +34,23 @@ def ready() -> dict[str, object]:
         "service": "obituary-intelligence-engine",
         "state_backend": store.backend.label,
         "state_directory": state_location,
+    }
+
+
+@app.get("/metrics")
+def metrics() -> dict[str, object]:
+    """Daily obituary-pipeline metrics (how many obits scanned per day, by source,
+    plus leads once flowing) — the measure-progress surface for the pilot."""
+    daily = read_metrics()
+    series = sorted(daily.values(), key=lambda entry: entry.get("date", ""))
+    return {
+        "service": "obituary-intelligence-engine",
+        "daily": series,
+        "totals": {
+            "days_tracked": len(series),
+            "obituaries": sum(entry.get("obituaries", 0) for entry in series),
+            "leads_delivered": sum(entry.get("leads_delivered", 0) for entry in series),
+        },
     }
 
 

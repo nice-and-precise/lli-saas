@@ -445,3 +445,49 @@ def test_collector_skips_failed_sources_and_parses_good_feed(monkeypatch) -> Non
     assert len(records) == 1
     assert records[0].full_name == "Margaret Carlson"
     assert records[0].state == "IA"
+
+
+def test_metrics_record_and_read_are_noops_without_kv(monkeypatch) -> None:
+    monkeypatch.delenv("KV_REST_API_URL", raising=False)
+    monkeypatch.delenv("KV_REST_API_TOKEN", raising=False)
+    from src import metrics_store
+
+    assert metrics_store.read_all() == {}
+    assert metrics_store.record_daily("2026-05-27", obituaries=5) == {}
+
+
+def test_metrics_backfill_buckets_by_published_date(monkeypatch) -> None:
+    monkeypatch.delenv("KV_REST_API_URL", raising=False)
+    monkeypatch.delenv("KV_REST_API_TOKEN", raising=False)
+    from datetime import datetime, timedelta, timezone
+
+    from src import metrics_store
+
+    class _Rec:
+        def __init__(self, published_at):
+            self.published_at = published_at
+
+    today = datetime.now(timezone.utc).date()
+    records = [
+        _Rec(f"{today.isoformat()}T10:00:00+00:00"),
+        _Rec(f"{today.isoformat()}T11:00:00+00:00"),
+        _Rec(f"{(today - timedelta(days=2)).isoformat()}T09:00:00+00:00"),
+        _Rec(f"{(today - timedelta(days=20)).isoformat()}T09:00:00+00:00"),  # outside 7-day window
+        _Rec(None),
+    ]
+    counts = metrics_store.backfill_from_records(records, days=7)
+    assert counts[today.isoformat()] == 2
+    assert counts[(today - timedelta(days=2)).isoformat()] == 1
+    assert (today - timedelta(days=20)).isoformat() not in counts
+
+
+def test_metrics_endpoint_shape(monkeypatch) -> None:
+    monkeypatch.delenv("KV_REST_API_URL", raising=False)
+    monkeypatch.delenv("KV_REST_API_TOKEN", raising=False)
+    from src.app import app
+
+    response = TestClient(app).get("/metrics")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["daily"] == []
+    assert body["totals"]["days_tracked"] == 0

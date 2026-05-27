@@ -115,6 +115,23 @@ def contract() -> dict[str, str]:
     }
 
 
+@app.get("/metrics")
+def metrics() -> dict:
+    """Portal-facing proxy of the obituary engine's daily metrics, so the dashboard
+    can read them via the CORS-enabled lead-engine origin. Degrades to an empty
+    shape if the engine is unconfigured or unreachable."""
+    base_url = _obituary_engine_base_url()
+    empty = {"daily": [], "totals": {"days_tracked": 0, "obituaries": 0, "leads_delivered": 0}}
+    if not base_url:
+        return empty
+    try:
+        response = httpx.get(f"{base_url}/metrics", timeout=5.0)
+        response.raise_for_status()
+        return response.json()
+    except (httpx.HTTPError, ValueError):
+        return {**empty, "error": "metrics_unavailable"}
+
+
 @app.post(
     "/run-scan",
     response_model=ScanResult,

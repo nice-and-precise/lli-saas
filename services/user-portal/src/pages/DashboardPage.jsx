@@ -276,6 +276,7 @@ export default function DashboardPage() {
   const [lastRunSummary, setLastRunSummary] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [pipelineMetrics, setPipelineMetrics] = useState(null);
 
   async function refreshDashboard() {
     setLoading(true);
@@ -349,6 +350,25 @@ export default function DashboardPage() {
 
   useEffect(() => {
     refreshDashboard();
+  }, []);
+
+  // Pipeline metrics are best-effort and informational — fetched once on mount in
+  // their own effect so a failure never affects the dashboard, and the per-refresh
+  // fetch sequence stays unchanged.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const leadEngineBaseUrl = getRequiredServiceBaseUrl("leadEngineBaseUrl");
+        const payload = await fetchJson(leadEngineBaseUrl, "/metrics");
+        if (active) setPipelineMetrics(payload);
+      } catch {
+        if (active) setPipelineMetrics(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function handleRunScan(event) {
@@ -628,6 +648,28 @@ export default function DashboardPage() {
           </p>
         ) : null}
       </section>
+
+      {pipelineMetrics?.daily?.length ? (
+        <section className="panel">
+          <h2>Pipeline metrics</h2>
+          <p className="subtle">
+            {pipelineMetrics.totals?.obituaries ?? 0} obituaries scanned over{" "}
+            {pipelineMetrics.totals?.days_tracked ?? 0} days ·{" "}
+            {pipelineMetrics.totals?.leads_delivered ?? 0} leads delivered
+          </p>
+          <ul className="metrics-list">
+            {[...pipelineMetrics.daily]
+              .slice(-7)
+              .reverse()
+              .map((day) => (
+                <li key={day.date}>
+                  <strong>{day.date}</strong>: {day.obituaries} obituaries
+                  {day.kind === "backfill" ? " (est.)" : ""}
+                </li>
+              ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="grid dashboard-grid validation-grid">
         <article className="panel validation-card">

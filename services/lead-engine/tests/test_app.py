@@ -165,6 +165,31 @@ def test_contract_endpoint_exposes_canonical_schema_paths() -> None:
     assert Path(response.json()["scan_result_contract_path"]).is_file()
 
 
+def test_metrics_proxies_obituary_engine(monkeypatch) -> None:
+    monkeypatch.setenv("OBITUARY_ENGINE_BASE_URL", "http://obituary-engine:8080")
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"daily": [{"date": "2026-05-27", "obituaries": 5}], "totals": {"obituaries": 5}}
+
+    monkeypatch.setattr("src.app.httpx.get", lambda *a, **k: _Resp())
+
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert response.json()["totals"]["obituaries"] == 5
+
+
+def test_metrics_degrades_when_engine_unconfigured(monkeypatch) -> None:
+    monkeypatch.delenv("OBITUARY_ENGINE_BASE_URL", raising=False)
+
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert response.json()["daily"] == []
+
+
 def test_lead_model_matches_shared_schema_expectations() -> None:
     lead = build_lead()
     schema = load_lead_schema()

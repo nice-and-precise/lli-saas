@@ -115,9 +115,12 @@ VITE_LEAD_ENGINE_BASE_URL=https://lead.jordandamhof.com
   **Protection Bypass for Automation / public path** so Monday can still reach
   `/auth/callback` (which must stay public).
 - **Server → server** calls — `lead-engine → crm-adapter` (`/owners`, `/leads`),
-  `lead-engine → obituary-engine` (`/run-scan`), and `Cron → lead-engine /run-scan`
-  — are authenticated by `SERVICE_SHARED_SECRET` / `CRON_SECRET`. Set the **same**
-  value on all three backend projects. The guards are no-ops when unset (local dev).
+  `lead-engine → obituary-engine` (`/run-scan` and `/metrics/leads-delivered`), and
+  `Cron → lead-engine /run-scan` — are authenticated by `SERVICE_SHARED_SECRET` /
+  `CRON_SECRET`. Set the **same** value on all three backend projects. The guards are
+  no-ops when unset (local dev).
+- **Health endpoints** (`/health`, `/ready`) report only a backend *name*
+  (`state_backend` / `token_store`: `file`/`kv`/`memory`) — never a filesystem path.
 - **Input bounds:** `/owners/import` caps `owners` at 5000 and validates `board_name`.
 
 ### Residual risks (enable Deployment Protection)
@@ -131,9 +134,10 @@ so they rely on Vercel Deployment Protection (Password) being enabled:
   obituary caps + dedup) or create boards/items in the connected Monday workspace.
   **Action: enable Vercel Deployment Protection → Password on `lli-crm-adapter` and
   `lli-lead-engine`, with a bypass for `/auth/callback` (Monday must reach it).**
-- **OAuth `state` is not yet validated** in `/auth/callback` (login-CSRF / token
-  overwrite). Tracked as a follow-up PR that needs a live OAuth round-trip test
-  before merge (cookie-based `state` check).
+- **OAuth `state` validation** (login-CSRF / token overwrite): the cookie-based
+  `state` check is implemented and tested in an **open PR** (`sec/oauth-state-validation`),
+  held from merge until a live Monday OAuth round-trip confirms Monday preserves the
+  `state` param through the redirect. Merge + deploy `crm-adapter` after that passes.
 - `x-tenant-id` is client-controlled; fine for the single-tenant pilot, but bind it
   to an authenticated principal before onboarding a second tenant.
 

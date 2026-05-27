@@ -15,6 +15,9 @@ FastAPI orchestration service for the canonical `run_scan()` flow.
   2. canonical owner validation
   3. obituary intelligence execution
   4. canonical lead delivery back through the CRM adapter
+  5. best-effort report of the day's delivered-lead count to the obituary engine's
+     `POST /metrics/leads-delivered` (fully contained — a metrics failure never changes a scan's outcome)
+- `GET /metrics` proxies the obituary engine's daily metrics so the portal can read them via this CORS-enabled origin.
 - `GET /contract` exposes the canonical contract artifact paths for `Lead`, `OwnerRecord`, and `ScanResult`.
 - Set `CRM_ADAPTER_BASE_URL` to the running `crm-adapter` base URL.
 - Set `OBITUARY_ENGINE_BASE_URL` to the upstream obituary engine base URL.

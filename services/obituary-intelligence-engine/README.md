@@ -41,13 +41,18 @@ Iowa obituary-intelligence service for `lli-saas`.
   - request and response payloads are validated with Pydantic models at the HTTP boundary
   - invalid timestamps, malformed obituary URLs, extra fields, and enum mismatches are rejected before downstream processing
 - `GET /health`
-  - basic process health
+  - basic process health; reports the state `state_backend` name (`file`/`kv`) only — never a filesystem path
 - `GET /ready`
-  - state-path readiness
+  - readiness; reports the `state_backend` name (no filesystem path is disclosed)
 - `GET /metrics`
-  - daily pipeline metrics: obituaries scanned per day (with per-source breakdown) and leads, plus
-    totals — the measure-progress surface. Recorded by the daily prefetch job; backfilled from
-    published dates on first run. Stored in KV (`OBITUARY_METRICS_KEY`).
+  - daily pipeline metrics: obituaries scanned per day (with per-source breakdown) and leads delivered
+    per day, plus totals — the measure-progress surface. Obituary counts are recorded by the daily
+    prefetch job (backfilled from published dates on first run); leads-delivered is recorded via the
+    endpoint below. Stored in KV (`OBITUARY_METRICS_KEY`).
+- `POST /metrics/leads-delivered`
+  - records leads newly delivered to a CRM today (`{count, date?}`) so the success metric trends.
+    Server-to-server only — called best-effort by lead-engine after delivery; guarded by the same
+    `SERVICE_SHARED_SECRET` as `/run-scan`, and a no-op when KV is unconfigured.
 
 ## Lead Contract Validation
 

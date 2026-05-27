@@ -25,7 +25,9 @@ The portal reads board/status data from `crm-adapter` and launches scans through
 
 ## Operator quick-start (3 steps — no setup, no URLs to type)
 
-This is the self-serve path on the live pilot. Open **https://lli.jordandamhof.com** and:
+This is the self-serve path on the live pilot. The dashboard always shows a **"Next step"** cue at the
+top telling you the one thing to do next, so you can follow it without this runbook. Open
+**https://lli.jordandamhof.com** and:
 
 1. **Connect Monday.** Click **Connect Monday** (Step 1 on the dashboard) and authorize the
    "LLI Lead Engine" app. You're returned to the dashboard with a "✅ Monday.com connected" banner.
@@ -38,6 +40,18 @@ This is the self-serve path on the live pilot. Open **https://lli.jordandamhof.c
 
 After the first connect, the **daily Vercel Cron** runs a scan automatically (≈12:00 America/Chicago),
 so new leads keep arriving without any action.
+
+## Measuring progress & success
+
+The dashboard's **Pipeline metrics** panel tracks two numbers over time so growth is visible:
+
+- **Obituaries scanned per day** (with a per-source breakdown) — coverage. Recorded by the daily
+  prefetch collector; the first run backfills the prior week from published dates.
+- **Leads delivered per day** — the success metric. Each scan reports the count of newly delivered
+  Monday items, so the trend shows the pilot producing value as owner coverage and obituary matches grow.
+
+Both come from `GET /metrics` (served by the obituary engine, proxied through `lead-engine` for the
+portal). The numbers are stored in Upstash KV, so they persist across deploys.
 
 ## Required Environment
 

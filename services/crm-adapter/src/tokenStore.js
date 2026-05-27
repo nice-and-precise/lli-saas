@@ -306,7 +306,12 @@ class KvTokenStore extends PersistentTokenStore {
   _redis() {
     if (!this._client) {
       const { Redis } = require("@upstash/redis");
-      this._client = Redis.fromEnv();
+      // Construct explicitly from the KV_* vars the Vercel/Upstash integration
+      // injects (Redis.fromEnv() instead expects UPSTASH_REDIS_REST_* names).
+      this._client = new Redis({
+        url: process.env.KV_REST_API_URL,
+        token: process.env.KV_REST_API_TOKEN,
+      });
     }
     return this._client;
   }

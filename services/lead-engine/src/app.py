@@ -15,7 +15,7 @@ app = FastAPI(title="lead-engine", version="0.1.0")
 # plus localhost for dev.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://([a-z0-9-]+\.)?jordandamhof\.com|http://localhost:\d+",
+    allow_origin_regex=r"^(https://([a-z0-9-]+\.)?jordandamhof\.com|http://localhost:\d+)$",
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,

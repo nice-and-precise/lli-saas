@@ -20,6 +20,7 @@ const {
 } = require("./validation");
 
 const SOURCE_OWNER_BOARD_NAME = "Clients";
+const MAX_IMPORT_OWNERS = 5000;
 
 function buildDuplicateKey(value) {
   return String(value ?? "")
@@ -628,15 +629,20 @@ function createApp(options = {}) {
       return res.status(400).json({ error: "Missing OAuth code" });
     }
 
-    const tokenPayload = await mondayClient.exchangeCodeForToken(code);
-    await tokenStore.save("monday_access_token", tokenPayload.access_token);
-    if (typeof tokenStore.saveState === "function") {
-      await tokenStore.saveState({
-        tokens: {
-          monday_access_token: tokenPayload.access_token,
-        },
-        account_id: tokenPayload.account_id ?? null,
-      });
+    try {
+      const tokenPayload = await mondayClient.exchangeCodeForToken(code);
+      await tokenStore.save("monday_access_token", tokenPayload.access_token);
+      if (typeof tokenStore.saveState === "function") {
+        await tokenStore.saveState({
+          tokens: {
+            monday_access_token: tokenPayload.access_token,
+          },
+          account_id: tokenPayload.account_id ?? null,
+        });
+      }
+    } catch (error) {
+      // Don't leak upstream error/stack on a public endpoint; keep it generic.
+      return res.status(400).json({ error: "oauth_exchange_failed" });
     }
 
     // Return the operator to the portal instead of dead-ending on JSON.
@@ -677,6 +683,13 @@ function createApp(options = {}) {
     const boardName = String(req.body?.board_name ?? SOURCE_OWNER_BOARD_NAME).trim() || SOURCE_OWNER_BOARD_NAME;
     if (owners.length === 0) {
       return res.status(400).json({ error: "no owners provided" });
+    }
+    // Bound the request so the endpoint can't be used to flood a Monday workspace.
+    if (owners.length > MAX_IMPORT_OWNERS) {
+      return res.status(413).json({ error: `too many owners (max ${MAX_IMPORT_OWNERS})` });
+    }
+    if (boardName.length > 255 || !/^[\w .,'&()/-]+$/.test(boardName)) {
+      return res.status(400).json({ error: "invalid board_name" });
     }
 
     const state = await getPersistedState(tokenStore, tenantId);

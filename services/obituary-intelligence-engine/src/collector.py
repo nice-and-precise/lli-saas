@@ -89,6 +89,18 @@ class ObituaryCollector:
                 collected.extend(self._collect_source(source, cutoff_date=cutoff_date))
             except Exception as error:  # noqa: BLE001 - resilience: never let one source crash the scan
                 logger.warning("Skipping obituary source %s (%s): %s: %s", source.source_id, source.feed_url, type(error).__name__, error)
+
+        # Merge the statewide corpus pre-collected by the GitHub Actions job
+        # (Legacy.com + full feed sweep) from KV. Heavy collection runs there,
+        # off the 60s function clock; here we just add the records and match.
+        if os.getenv("OBITUARY_USE_PREFETCH", "1").lower() not in ("0", "false", "no"):
+            from src.prefetch_store import read_prefetched
+
+            prefetched = read_prefetched()
+            if prefetched:
+                logger.info("Merged %d prefetched obituaries from KV corpus", len(prefetched))
+                collected.extend(prefetched)
+
         return self._dedupe(collected)
 
     def _collect_source(self, source: RSSSource, *, cutoff_date=None) -> list[ObituaryRecord]:

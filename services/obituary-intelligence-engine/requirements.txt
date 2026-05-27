@@ -10,3 +10,7 @@ lxml>=5.3,<6
 nameparser>=1.1,<2
 rapidfuzz>=3.11,<4
 requests>=2.32,<3
+# TLS/JA3 browser impersonation for the obituary collector — defeats the Lee
+# Enterprises feeds' 429s without a browser (Scrapling wraps this but bundles
+# 270MB of Playwright, which exceeds Vercel's function limit, so we use it directly).
+curl_cffi>=0.7,<1

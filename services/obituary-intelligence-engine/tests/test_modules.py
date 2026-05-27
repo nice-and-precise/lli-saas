@@ -381,3 +381,67 @@ def test_lead_contract_includes_new_explainability_fields(tmp_path) -> None:
     assert isinstance(lead.match.discrepancies, list)
     # nickname_match may or may not be present depending on the name pair
     # (Bob -> Robert would trigger it; Robert -> Robert would not)
+
+
+class _FakeResp:
+    def __init__(self, text: str, status: int = 200) -> None:
+        self.text = text
+        self.status_code = status
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+class _FakeSession:
+    """Duck-typed stand-in for a curl_cffi/requests session: maps url -> response
+    or Exception (to simulate a dead/blocked feed)."""
+
+    def __init__(self, mapping: dict) -> None:
+        self.mapping = mapping
+
+    def get(self, url, timeout=None):  # noqa: ARG002
+        value = self.mapping.get(url)
+        if isinstance(value, Exception):
+            raise value
+        if value is None:
+            raise RuntimeError(f"unexpected url {url}")
+        return value
+
+
+def test_collector_skips_failed_sources_and_parses_good_feed(monkeypatch) -> None:
+    from src import collector as collector_mod
+    from src.feed_sources import RSSSource
+
+    good = RSSSource("good", "Good", "https://good.example/feed")
+    bad = RSSSource("bad", "Bad", "https://bad.example/feed")
+    monkeypatch.setattr(collector_mod, "resolve_sources", lambda _ids: [good, bad])
+
+    description = (
+        "Margaret Carlson, 88, of Boone, Iowa, passed away peacefully. "
+        "She is survived by her daughter Susan of Des Moines and her son Mark. "
+        + "Funeral details to follow. " * 15
+    )
+    rss = (
+        '<?xml version="1.0"?><rss version="2.0"><channel>'
+        "<item><title>Margaret Carlson</title>"
+        "<link>https://good.example/obit/1</link>"
+        f"<description>{description}</description></item>"
+        "</channel></rss>"
+    )
+    session = _FakeSession(
+        {
+            "https://good.example/feed": _FakeResp(rss),
+            "https://bad.example/feed": RuntimeError("boom: simulated dead feed"),
+        }
+    )
+
+    collector = ObituaryCollector(session=session)
+    collector._inter_source_delay = 0  # no sleeps in tests
+
+    records = collector.collect(source_ids=["good", "bad"], lookback_days=7)
+
+    # The bad source is skipped (no crash); the good source yields one Iowa obituary.
+    assert len(records) == 1
+    assert records[0].full_name == "Margaret Carlson"
+    assert records[0].state == "IA"

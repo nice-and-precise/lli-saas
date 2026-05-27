@@ -85,6 +85,16 @@ VITE_LEAD_ENGINE_BASE_URL=https://lead.jordandamhof.com
   and `Cron → lead-engine /run-scan`) are authenticated by `SERVICE_SHARED_SECRET`
   / `CRON_SECRET`. The guards are no-ops when those vars are unset (local dev).
 
+## Gotcha: crm-adapter framework preset must be "Other" (null)
+
+If Vercel sets the `lli-crm-adapter` project's **Framework Preset** to **Express**, it builds a second
+rogue root function (`index`) from `src/app.js` alongside `api/index`, and the bare `/` route returns
+`FUNCTION_INVOCATION_FAILED` ("Invalid export found in module src/app.js"). Real routes still work, so
+it's easy to miss. Fix: set the project framework to **Other / none** (API: `PATCH /v9/projects/
+lli-crm-adapter {"framework": null}`) and redeploy. The app is served solely by `api/index.js` + the
+catch-all rewrite. `src/server.js` is `.vercelignore`d for the same reason (its `listen()` triggers
+server auto-detection).
+
 ## DNS (Porkbun)
 
 Add CNAMEs for `lli`, `crm`, `lead`, `obit` (and apex/`www` for the portal)

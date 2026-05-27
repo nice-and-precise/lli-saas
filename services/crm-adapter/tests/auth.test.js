@@ -92,7 +92,14 @@ describe("crm-adapter routes", () => {
     });
   });
 
-  it("exchanges code and stores token on /auth/callback", async () => {
+  // Helper: run /auth/login and return the signed `state` the app generated.
+  async function getSignedState(app, mondayClient) {
+    mondayClient.getAuthorizationUrl.mockImplementation((s) => `https://auth.monday.com/oauth2/authorize?state=${s}`);
+    await request(app).get("/auth/login");
+    return mondayClient.getAuthorizationUrl.mock.calls.at(-1)[0];
+  }
+
+  it("exchanges code and stores token on /auth/callback with a valid signed state", async () => {
     const mondayClient = {
       exchangeCodeForToken: vi.fn(async () => ({
         access_token: "token-123",
@@ -103,12 +110,11 @@ describe("crm-adapter routes", () => {
     const tokenStore = {
       save: vi.fn(async () => {}),
     };
-    const app = createApp({ mondayClient, tokenStore });
+    const app = createApp({ mondayClient, tokenStore, clientSecret: "test-secret" });
 
-    // Valid callback must carry the state matching the cookie set at /auth/login.
-    const response = await request(app)
-      .get("/auth/callback?code=abc123&state=s123")
-      .set("Cookie", "lli_oauth_state=s123");
+    // The callback must carry the signed state the app issued at /auth/login.
+    const state = await getSignedState(app, mondayClient);
+    const response = await request(app).get(`/auth/callback?code=abc123&state=${state}`);
 
     // Callback redirects the operator back to the portal instead of JSON.
     expect(response.statusCode).toBe(302);
@@ -117,35 +123,39 @@ describe("crm-adapter routes", () => {
     expect(tokenStore.save).toHaveBeenCalledWith("monday_access_token", "token-123");
   });
 
-  it("rejects /auth/callback when the state does not match the cookie (CSRF guard)", async () => {
+  it("rejects /auth/callback when the state is forged or tampered (CSRF guard)", async () => {
     const mondayClient = {
       exchangeCodeForToken: vi.fn(),
       getAuthorizationUrl: vi.fn(),
     };
-    const app = createApp({ mondayClient, tokenStore: { save: vi.fn() } });
+    const app = createApp({ mondayClient, tokenStore: { save: vi.fn() }, clientSecret: "test-secret" });
 
-    const response = await request(app)
-      .get("/auth/callback?code=abc123&state=attacker")
-      .set("Cookie", "lli_oauth_state=s123");
+    // A forged state with no valid signature is rejected.
+    const forged = await request(app).get("/auth/callback?code=abc123&state=attacker.123.deadbeef");
+    expect(forged.statusCode).toBe(400);
+    expect(forged.body).toEqual({ error: "invalid_oauth_state" });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toEqual({ error: "invalid_oauth_state" });
+    // A real signed state with one tampered character is also rejected.
+    const valid = await getSignedState(app, mondayClient);
+    const tampered = valid.slice(0, -1) + (valid.at(-1) === "0" ? "1" : "0");
+    const res2 = await request(app).get(`/auth/callback?code=abc123&state=${tampered}`);
+    expect(res2.statusCode).toBe(400);
+    expect(res2.body).toEqual({ error: "invalid_oauth_state" });
+
     expect(mondayClient.exchangeCodeForToken).not.toHaveBeenCalled();
   });
 
-  it("sets an HttpOnly state cookie on /auth/login", async () => {
-    const mondayClient = {
-      getAuthorizationUrl: vi.fn(() => "https://auth.monday.com/oauth2/authorize?state=x"),
-    };
-    const app = createApp({ mondayClient, tokenStore: { save: vi.fn() } });
+  it("issues a signed, self-verifying state on /auth/login (no cookie)", async () => {
+    const mondayClient = { getAuthorizationUrl: vi.fn(() => "https://auth.monday.com/oauth2/authorize") };
+    const app = createApp({ mondayClient, tokenStore: { save: vi.fn() }, clientSecret: "test-secret" });
 
     const response = await request(app).get("/auth/login");
 
     expect(response.statusCode).toBe(302);
-    const setCookie = response.headers["set-cookie"][0];
-    expect(setCookie).toMatch(/^lli_oauth_state=[a-f0-9]{32}/);
-    expect(setCookie).toContain("HttpOnly");
-    expect(mondayClient.getAuthorizationUrl).toHaveBeenCalled();
+    // Stateless design: no Set-Cookie, state is carried in the redirect itself.
+    expect(response.headers["set-cookie"]).toBeUndefined();
+    const state = mondayClient.getAuthorizationUrl.mock.calls.at(-1)[0];
+    expect(state).toMatch(/^[a-f0-9]{24}\.\d+\.[a-f0-9]{64}$/); // nonce.timestamp.hmac
   });
 
   it("lists boards using the persisted OAuth token", async () => {

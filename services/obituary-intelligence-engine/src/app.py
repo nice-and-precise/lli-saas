@@ -33,23 +33,18 @@ def health() -> dict[str, object]:
     return {
         "status": "ok",
         "service": "obituary-intelligence-engine",
-        "state_path": os.getenv(
-            "OBITUARY_ENGINE_STATE_PATH",
-            "/var/lib/lli-saas/obituary-intelligence-engine/state.json",
-        ),
+        # Report the backend name ("file"/"kv"), never the filesystem path.
+        "state_backend": ObituaryStateStore().backend.label,
     }
 
 
 @app.get("/ready")
 def ready() -> dict[str, object]:
-    store = ObituaryStateStore()
-    # `.path` is set only for the file backend; KV reports its label instead.
-    state_location = str(store.path.parent) if store.path is not None else store.backend.label
     return {
         "status": "ready",
         "service": "obituary-intelligence-engine",
-        "state_backend": store.backend.label,
-        "state_directory": state_location,
+        # Backend name only — the filesystem path is internal, not disclosed here.
+        "state_backend": ObituaryStateStore().backend.label,
     }
 
 

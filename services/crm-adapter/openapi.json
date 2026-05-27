@@ -112,8 +112,10 @@
           "source_owner_board_name": {
             "type": "string"
           },
-          "token_store_path": {
-            "type": "string"
+          "token_store": {
+            "type": "string",
+            "description": "Backend name only (file/kv/memory) — never the filesystem path.",
+            "enum": ["file", "kv", "memory"]
           }
         },
         "required": [
@@ -121,7 +123,7 @@
           "service",
           "monday_oauth_configured",
           "source_owner_board_name",
-          "token_store_path"
+          "token_store"
         ]
       },
       "ReadyResponse": {

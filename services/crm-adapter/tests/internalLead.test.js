@@ -56,6 +56,7 @@ function buildLead(overrides = {}) {
       explanation: [],
       explanation_details: [],
       matched_fields: [],
+      discrepancies: [],
     },
     tier: "hot",
     out_of_state_heir_likely: true,

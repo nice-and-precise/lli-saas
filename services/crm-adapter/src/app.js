@@ -661,6 +661,67 @@ function createApp(options = {}) {
     });
   });
 
+  // Create + populate the owner-source ("Clients") board from a list of owners.
+  // Powers white-glove onboarding and the portal CSV upload. Not service-secret
+  // guarded — the portal (browser) calls it; access is gated by the OAuth token
+  // (only the connected account's boards are touched) and platform protection.
+  app.post("/owners/import", async (req, res) => {
+    const tenantId = getTenantId(req);
+    const owners = Array.isArray(req.body?.owners) ? req.body.owners : [];
+    const boardName = String(req.body?.board_name ?? SOURCE_OWNER_BOARD_NAME).trim() || SOURCE_OWNER_BOARD_NAME;
+    if (owners.length === 0) {
+      return res.status(400).json({ error: "no owners provided" });
+    }
+
+    const state = await getPersistedState(tokenStore, tenantId);
+    const token = state.tokens?.monday_access_token ?? null;
+    if (!token) {
+      return res.status(409).json({ error: "Monday OAuth token not configured" });
+    }
+
+    try {
+      const findBoard = async () =>
+        (await mondayClient.listBoards(token)).find((board) => String(board.name).trim() === boardName);
+
+      let board = await findBoard();
+      if (!board) {
+        await mondayClient.createBoard({ token, boardName });
+        board = await findBoard();
+      }
+      const boardId = String(board.id);
+
+      // Ensure County + State text columns; map lowercased title -> column id.
+      const columnIdByTitle = {};
+      for (const column of board.columns ?? []) {
+        columnIdByTitle[String(column.title).toLowerCase()] = column.id;
+      }
+      const ensureColumn = async (title) => {
+        const key = title.toLowerCase();
+        if (columnIdByTitle[key]) return columnIdByTitle[key];
+        const created = await mondayClient.createColumn({ token, boardId, title });
+        columnIdByTitle[key] = created.id;
+        return created.id;
+      };
+      const countyColumnId = await ensureColumn("County");
+      const stateColumnId = await ensureColumn("State");
+
+      let ownersCreated = 0;
+      for (const owner of owners) {
+        const itemName = String(owner.owner_name ?? owner.name ?? "").trim();
+        if (!itemName) continue;
+        const columnValues = {};
+        if (owner.county) columnValues[countyColumnId] = String(owner.county);
+        if (owner.state) columnValues[stateColumnId] = String(owner.state);
+        await mondayClient.createItem({ token, boardId, itemName, columnValues });
+        ownersCreated += 1;
+      }
+
+      return res.status(201).json({ board_id: boardId, board_name: boardName, owners_created: ownersCreated });
+    } catch (error) {
+      return res.status(502).json(buildMondayRequestErrorResponse(error, "Failed to import owners into Monday"));
+    }
+  });
+
   app.get("/owners", requireServiceSecret, async (req, res) => {
     const tenantId = getTenantId(req);
     const state = await getPersistedState(tokenStore, tenantId);

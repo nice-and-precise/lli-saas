@@ -90,6 +90,36 @@ const matchExplanationDetailSchema = z
   })
   .strict();
 
+const nicknameIndicatorSchema = z
+  .object({
+    owner_name_used: nonEmptyTrimmedString,
+    obituary_name_used: nonEmptyTrimmedString,
+    nickname_set: z.array(z.string()).min(1),
+  })
+  .strict();
+
+const dataDiscrepancySchema = z
+  .object({
+    field: nonEmptyTrimmedString,
+    owner_value: z.string().nullable().optional(),
+    obituary_value: z.string().nullable().optional(),
+    severity: z.enum(["info", "warning", "minor"]).optional().default("info"),
+    note: nonEmptyTrimmedString,
+  })
+  .strict();
+
+const geographicProximitySchema = z
+  .object({
+    owner_city: z.string().nullable().optional(),
+    owner_state: z.string().nullable().optional(),
+    obituary_city: z.string().nullable().optional(),
+    obituary_state: z.string().nullable().optional(),
+    same_state: z.boolean().optional().default(false),
+    city_match_score: z.number().nullable().optional(),
+    bonus_applied: z.boolean().optional().default(false),
+  })
+  .strict();
+
 const matchMetadataSchema = z
   .object({
     score: z.number(),
@@ -101,6 +131,11 @@ const matchMetadataSchema = z
     matched_fields: z.array(z.string()).optional().default([]),
     explanation: z.array(z.string()).optional().default([]),
     explanation_details: z.array(matchExplanationDetailSchema).optional().default([]),
+    // Explainability fields emitted by obituary-intelligence-engine (also in the
+    // shared lead.schema.json). Kept in sync so delivery doesn't reject valid leads.
+    nickname_match: nicknameIndicatorSchema.nullable().optional(),
+    discrepancies: z.array(dataDiscrepancySchema).optional().default([]),
+    geographic_proximity: geographicProximitySchema.nullable().optional(),
   })
   .strict();
 

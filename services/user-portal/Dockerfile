@@ -9,6 +9,7 @@ COPY index.html /app/index.html
 COPY public /app/public
 COPY vite.config.js /app/vite.config.js
 COPY src /app/src
+COPY scripts /app/scripts
 
 RUN npm run build
 

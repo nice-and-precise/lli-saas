@@ -117,6 +117,14 @@ class ScanService:
                     )
                 )
 
+        # Record the day's newly-delivered leads for the success metric. Best-effort
+        # and fully contained: the leads are already delivered, so a metrics failure
+        # (or an engine without the reporter) must never change the scan's outcome.
+        try:
+            self.obituary_engine.report_leads_delivered(delivery_summary.created)
+        except Exception:  # noqa: BLE001 - metrics must never break a scan
+            pass
+
         status = self._resolve_status(delivery_summary, errors, len(obituary_scan_result.leads))
 
         return ScanResult(

@@ -54,6 +54,9 @@ class ObituaryEngine(Protocol):
     def run_scan(self, request: ObituaryEngineScanRequest) -> ObituaryEngineScanResult:
         ...
 
+    def report_leads_delivered(self, count: int) -> None:
+        ...
+
 
 class HttpObituaryEngine:
     def __init__(self, base_url: str | None = None, timeout_seconds: float = 30.0) -> None:
@@ -101,3 +104,19 @@ class HttpObituaryEngine:
                 message="obituary_intelligence_engine returned an invalid payload",
                 details={"errors": exc.errors()},
             ) from exc
+
+    def report_leads_delivered(self, count: int) -> None:
+        """Best-effort: record newly-delivered leads into the engine's daily metrics
+        so the success metric trends. Never raises — a metrics hiccup must not change
+        a scan's outcome (the scan has already delivered by the time this runs)."""
+        if not self.base_url or count <= 0:
+            return
+        try:
+            httpx.post(
+                f"{self.base_url}/metrics/leads-delivered",
+                json={"count": int(count)},
+                headers=_service_headers(),
+                timeout=5.0,
+            )
+        except httpx.HTTPError:
+            return

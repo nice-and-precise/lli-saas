@@ -548,6 +548,10 @@ function createApp(options = {}) {
     }
   }
 
+  app.get("/", (_req, res) => {
+    res.json({ service: "crm-adapter", status: "ok", docs: "/health, /ready" });
+  });
+
   app.get("/health", (_req, res) => {
     res.json({
       status: "ok",

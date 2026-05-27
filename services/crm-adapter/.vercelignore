@@ -1,0 +1,7 @@
+# Keep src/server.js out of the Vercel deploy: it calls app.listen(), which makes
+# Vercel auto-detect a second "Node server" function (built from src/app.js) that
+# crashes with "Invalid export" and breaks the bare / route. The serverless
+# entrypoint is api/index.js (which imports src/app.js). server.js is local-dev only.
+src/server.js
+tests
+data

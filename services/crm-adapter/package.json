@@ -2,7 +2,7 @@
   "name": "crm-adapter",
   "version": "0.1.0",
   "description": "Phase 1 Monday.com adapter scaffold for lli-saas",
-  "main": "src/server.js",
+  "main": "api/index.js",
   "scripts": {
     "dev": "node src/server.js",
     "test": "vitest run"

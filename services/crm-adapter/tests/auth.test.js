@@ -711,4 +711,83 @@ describe("crm-adapter routes", () => {
     expect(response.body.latest_delivery.id).toBe("delivery-1");
     expect(response.body.scan_runs[0].scan_id).toBe("scan-1");
   });
+
+  it("imports owners into an existing Clients board", async () => {
+    const createItem = vi.fn(async () => ({ id: "item-1" }));
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi.fn(async () => [
+        {
+          id: "clients-1",
+          name: "Clients",
+          columns: [
+            { id: "name", title: "Name", type: "name" },
+            { id: "county_col", title: "County", type: "text" },
+            { id: "state_col", title: "State", type: "text" },
+          ],
+        },
+      ]),
+      createBoard: vi.fn(),
+      createColumn: vi.fn(),
+      createItem,
+    };
+    const tokenStore = new FileTokenStore({ filePath: path.join(os.tmpdir(), `lli-import-${Date.now()}.json`) });
+    await tokenStore.saveState({ tokens: { monday_access_token: "token-123" } });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app)
+      .post("/owners/import")
+      .send({
+        owners: [
+          { owner_name: "Jane Doe", county: "Boone", state: "IA" },
+          { owner_name: "John Roe", state: "IA" },
+        ],
+      });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.body.owners_created).toBe(2);
+    expect(response.body.board_name).toBe("Clients");
+    expect(mondayClient.createBoard).not.toHaveBeenCalled();
+    expect(createItem).toHaveBeenCalledTimes(2);
+    expect(createItem.mock.calls[0][0].itemName).toBe("Jane Doe");
+    expect(createItem.mock.calls[0][0].columnValues.county_col).toBe("Boone");
+  });
+
+  it("creates the Clients board when it does not exist", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn(),
+      listBoards: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "clients-1", name: "Clients", columns: [] }]),
+      createBoard: vi.fn(async () => ({ id: "clients-1" })),
+      createColumn: vi.fn(async () => ({ id: "col" })),
+      createItem: vi.fn(async () => ({ id: "item-1" })),
+    };
+    const tokenStore = new FileTokenStore({ filePath: path.join(os.tmpdir(), `lli-import2-${Date.now()}.json`) });
+    await tokenStore.saveState({ tokens: { monday_access_token: "token-123" } });
+    const app = createApp({ mondayClient, tokenStore });
+
+    const response = await request(app).post("/owners/import").send({ owners: [{ owner_name: "Jane Doe" }] });
+
+    expect(response.statusCode).toBe(201);
+    expect(mondayClient.createBoard).toHaveBeenCalledWith({ token: "token-123", boardName: "Clients" });
+  });
+
+  it("rejects oversized imports and invalid board names", async () => {
+    const app = createApp({
+      mondayClient: { getAuthorizationUrl: vi.fn() },
+      tokenStore: new FileTokenStore({ filePath: path.join(os.tmpdir(), `lli-import3-${Date.now()}.json`) }),
+    });
+
+    const tooMany = await request(app)
+      .post("/owners/import")
+      .send({ owners: Array.from({ length: 5001 }, () => ({ owner_name: "X" })) });
+    expect(tooMany.statusCode).toBe(413);
+
+    const badName = await request(app)
+      .post("/owners/import")
+      .send({ owners: [{ owner_name: "X" }], board_name: "bad;name" });
+    expect(badName.statusCode).toBe(400);
+  });
 });

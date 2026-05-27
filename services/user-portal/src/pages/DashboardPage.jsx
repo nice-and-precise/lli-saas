@@ -1,7 +1,7 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 
 import MatchExplainabilityCard from "../components/MatchExplainabilityCard";
-import { getRequiredServiceBaseUrl } from "../runtimeConfig";
+import { getRequiredServiceBaseUrl, resolveServiceBaseUrl } from "../runtimeConfig";
 
 const INITIAL_FORM = {
   owner_limit: 1000,
@@ -537,6 +537,14 @@ export default function DashboardPage() {
   const crmFields = fieldCatalog.crm_fields ?? [];
   const lliFields = fieldCatalog.lli_fields ?? [];
   const itemNameStrategies = DEFAULT_ITEM_NAME_STRATEGIES;
+  const crmLinkBaseUrl = resolveServiceBaseUrl("crmAdapterBaseUrl");
+  const mondayConnected = Boolean(validation?.capabilities?.token_present);
+  const justConnected = useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("connected") === "1",
+    [],
+  );
 
   return (
     <main className="page dashboard-page">
@@ -565,6 +573,34 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {justConnected ? (
+        <section className="panel success-panel">
+          <p>✅ Monday.com connected. Import your owners below, then run a scan.</p>
+        </section>
+      ) : null}
+
+      {!loading && !mondayConnected ? (
+        <section className="panel connect-panel">
+          <h2>Step 1 — Connect your Monday.com</h2>
+          <p className="lede">
+            Authorize LLI to read your owner board and deliver scored leads back into Monday.
+            You only do this once.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (crmLinkBaseUrl) {
+                window.location.href = `${crmLinkBaseUrl}/auth/login`;
+              } else {
+                setError("Portal is missing the CRM adapter URL; cannot start the Monday connection.");
+              }
+            }}
+          >
+            Connect Monday
+          </button>
+        </section>
+      ) : null}
 
       {error ? (
         <section className="panel alert-panel">
@@ -715,43 +751,50 @@ export default function DashboardPage() {
         <article className="panel scan-card">
           <h2>Run scan</h2>
           <form className="auth-form scan-form" onSubmit={handleRunScan}>
-            <label>
-              Owner limit
-              <input
-                type="number"
-                min="1"
-                max="10000"
-                value={form.owner_limit}
-                onChange={(event) => setForm((current) => ({ ...current, owner_limit: event.target.value }))}
-              />
-            </label>
-            <label>
-              Lookback days
-              <input
-                type="number"
-                min="1"
-                max="30"
-                value={form.lookback_days}
-                onChange={(event) => setForm((current) => ({ ...current, lookback_days: event.target.value }))}
-              />
-            </label>
-            <label>
-              Reference date
-              <input
-                type="date"
-                value={form.reference_date}
-                onChange={(event) => setForm((current) => ({ ...current, reference_date: event.target.value }))}
-              />
-            </label>
-            <label>
-              Source ids
-              <input
-                type="text"
-                placeholder="kwbg_boone, the_gazette"
-                value={form.source_ids}
-                onChange={(event) => setForm((current) => ({ ...current, source_ids: event.target.value }))}
-              />
-            </label>
+            <p className="subtle">
+              Scans the last {form.lookback_days} days of Iowa obituaries against your owners and
+              delivers matched leads to your board. The defaults work for most runs — just press the button.
+            </p>
+            <details className="advanced-options">
+              <summary>Advanced options</summary>
+              <label>
+                Owner limit
+                <input
+                  type="number"
+                  min="1"
+                  max="10000"
+                  value={form.owner_limit}
+                  onChange={(event) => setForm((current) => ({ ...current, owner_limit: event.target.value }))}
+                />
+              </label>
+              <label>
+                Lookback days
+                <input
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={form.lookback_days}
+                  onChange={(event) => setForm((current) => ({ ...current, lookback_days: event.target.value }))}
+                />
+              </label>
+              <label>
+                Reference date
+                <input
+                  type="date"
+                  value={form.reference_date}
+                  onChange={(event) => setForm((current) => ({ ...current, reference_date: event.target.value }))}
+                />
+              </label>
+              <label>
+                Source ids
+                <input
+                  type="text"
+                  placeholder="kwbg_boone, kcim_carroll"
+                  value={form.source_ids}
+                  onChange={(event) => setForm((current) => ({ ...current, source_ids: event.target.value }))}
+                />
+              </label>
+            </details>
             <button type="submit" disabled={runningScan || scanBlocked}>
               {runningScan
                 ? "Running scan..."

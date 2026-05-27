@@ -107,11 +107,9 @@ describe("crm-adapter routes", () => {
 
     const response = await request(app).get("/auth/callback?code=abc123");
 
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toEqual({
-      connected: true,
-      account_id: "acct-1",
-    });
+    // Callback now redirects the operator back to the portal instead of JSON.
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe("https://lli.jordandamhof.com/dashboard?connected=1");
     expect(mondayClient.exchangeCodeForToken).toHaveBeenCalledWith("abc123");
     expect(tokenStore.save).toHaveBeenCalledWith("monday_access_token", "token-123");
   });

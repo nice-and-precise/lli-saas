@@ -632,10 +632,9 @@ function createApp(options = {}) {
       });
     }
 
-    return res.json({
-      connected: true,
-      account_id: tokenPayload.account_id ?? null,
-    });
+    // Return the operator to the portal instead of dead-ending on JSON.
+    const portalBaseUrl = (process.env.PORTAL_BASE_URL ?? "https://lli.jordandamhof.com").replace(/\/+$/, "");
+    return res.redirect(`${portalBaseUrl}/dashboard?connected=1`);
   });
 
   app.get("/boards", async (req, res) => {

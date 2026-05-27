@@ -257,6 +257,35 @@ function MappingFieldCard({ field, value, onChange, crmFields }) {
   );
 }
 
+// The single "what do I do next?" cue for the cockpit, derived from current
+// state so the operator always has one clear next action (Codex UX principle).
+export function describeNextStep({
+  loading,
+  mondayConnected,
+  hasBoard,
+  errorCount,
+  canStartScan,
+  deliveryCount,
+}) {
+  if (loading) return null;
+  if (!mondayConnected) {
+    return "Connect your Monday.com account using the button below — you only do this once.";
+  }
+  if (!hasBoard) {
+    return "Import your owners (CSV) to create your Clients board, or pick a destination board below.";
+  }
+  if (errorCount > 0) {
+    return `Resolve ${errorCount} mapping ${errorCount === 1 ? "issue" : "issues"} flagged by the pre-scan validator below.`;
+  }
+  if (canStartScan) {
+    const ready = "You're set up — run a scan to deliver scored leads into Monday.";
+    return deliveryCount > 0
+      ? `${ready} ${deliveryCount} lead${deliveryCount === 1 ? "" : "s"} delivered so far.`
+      : ready;
+  }
+  return "Finish the destination board and field mapping below so the validator can clear a scan.";
+}
+
 export default function DashboardPage() {
   const [status, setStatus] = useState(null);
   const [mapping, setMapping] = useState(null);
@@ -558,6 +587,14 @@ export default function DashboardPage() {
   const lliFields = fieldCatalog.lli_fields ?? [];
   const crmLinkBaseUrl = resolveServiceBaseUrl("crmAdapterBaseUrl");
   const mondayConnected = Boolean(validation?.capabilities?.token_present);
+  const nextStep = describeNextStep({
+    loading,
+    mondayConnected,
+    hasBoard: Boolean(status?.board),
+    errorCount: validation?.summary?.error_count ?? 0,
+    canStartScan: Boolean(validation?.can_start_scan),
+    deliveryCount,
+  });
   const justConnected = useMemo(
     () =>
       typeof window !== "undefined" &&
@@ -566,7 +603,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <main className="page dashboard-page">
+    <main className="page dashboard-page" aria-label="Obituary intelligence dashboard">
       <section className="panel hero hero-grid">
         <div>
           <p className="eyebrow">lli-saas orchestration flow</p>
@@ -593,8 +630,22 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {nextStep ? (
+        <section
+          className="panel next-step-panel"
+          role="status"
+          aria-live="polite"
+          aria-label="What to do next"
+        >
+          <p className="next-step">
+            <span className="next-step__tag">Next step</span>
+            {nextStep}
+          </p>
+        </section>
+      ) : null}
+
       {justConnected ? (
-        <section className="panel success-panel">
+        <section className="panel success-panel" role="status">
           <p>✅ Monday.com connected. Import your owners below, then run a scan.</p>
         </section>
       ) : null}
@@ -622,7 +673,7 @@ export default function DashboardPage() {
       ) : null}
 
       {error ? (
-        <section className="panel alert-panel">
+        <section className="panel alert-panel" role="alert">
           <h2>Action needed</h2>
           <p>{error}</p>
         </section>

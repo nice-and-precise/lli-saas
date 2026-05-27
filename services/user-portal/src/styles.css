@@ -888,6 +888,30 @@ button {
   border-color: #16a34a;
   background: rgba(22, 163, 74, 0.08);
 }
+.next-step-panel {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.06);
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+.next-step {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 1rem;
+}
+.next-step__tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.12);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
 .advanced-options > summary {
   cursor: pointer;
   font-size: 0.85rem;

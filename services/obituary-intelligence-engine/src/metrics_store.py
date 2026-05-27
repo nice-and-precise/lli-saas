@@ -86,6 +86,30 @@ def record_daily(
     return metrics
 
 
+def record_leads_delivered(date_str: str, count: int) -> dict:
+    """Increment the leads-delivered count for one day, preserving that day's
+    obituary count and other fields. No-op (returns {}) if KV is unconfigured.
+    Incrementing (not setting) is correct because a day can have several scans."""
+    if not _kv_configured() or count <= 0:
+        return {}
+    metrics = read_all()
+    existing = metrics.get(date_str, {})
+    entry = dict(existing)
+    entry.update(
+        {
+            "date": date_str,
+            "obituaries": int(existing.get("obituaries", 0)),
+            "by_source": existing.get("by_source", {}),
+            "kind": existing.get("kind", "run"),
+            "leads_delivered": int(existing.get("leads_delivered", 0)) + int(count),
+            "leads_recorded_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    metrics[date_str] = entry
+    _command(["SET", METRICS_KEY, json.dumps(metrics)])
+    return metrics
+
+
 def backfill_from_records(records, *, days: int = 7) -> dict:
     """Seed per-day obituary counts from records' published_at over the last `days`
     days as "backfill" entries (won't overwrite real "run" records). Returns the

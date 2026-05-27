@@ -252,9 +252,16 @@ class StubCRMAdapterClient:
 
 
 class StubObituaryEngine:
-    def __init__(self, *, fail: bool = False) -> None:
+    def __init__(self, *, fail: bool = False, fail_metrics: bool = False) -> None:
         self.fail = fail
+        self.fail_metrics = fail_metrics
         self.last_request: ObituaryEngineScanRequest | None = None
+        self.reported_leads: list[int] = []
+
+    def report_leads_delivered(self, count: int) -> None:
+        self.reported_leads.append(count)
+        if self.fail_metrics:
+            raise RuntimeError("metrics backend down")
 
     def run_scan(self, request: ObituaryEngineScanRequest) -> ObituaryEngineScanResult:
         self.last_request = request
@@ -331,6 +338,24 @@ def test_run_scan_returns_completed_result() -> None:
     assert obituary_engine.last_request.lookback_days == 7
     assert obituary_engine.last_request.reference_date == "2026-03-11"
     assert obituary_engine.last_request.source_ids == ["kwbg_boone"]
+    # The two created deliveries are reported once for the success metric.
+    assert obituary_engine.reported_leads == [2]
+
+
+def test_run_scan_succeeds_even_when_metrics_reporting_fails() -> None:
+    crm_adapter = StubCRMAdapterClient()
+    obituary_engine = StubObituaryEngine(fail_metrics=True)
+    install_service(ScanService(crm_adapter_client=crm_adapter, obituary_engine=obituary_engine))
+
+    response = client.post("/run-scan", json={"owner_limit": 2})
+
+    # Leads are already delivered before metrics are recorded, so a metrics
+    # failure must not change the scan outcome.
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["delivery_summary"]["created"] == 2
+    assert obituary_engine.reported_leads == [2]
 
 
 def test_run_scan_rejects_invalid_owner_limit() -> None:

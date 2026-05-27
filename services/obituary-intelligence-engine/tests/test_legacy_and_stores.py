@@ -132,3 +132,23 @@ def test_metrics_store_roundtrip(monkeypatch) -> None:
     assert data["2026-05-27"]["obituaries"] == 12
     assert data["2026-05-27"]["kind"] == "run"
     assert data["2026-05-26"]["obituaries"] == 4
+
+
+def test_record_leads_delivered_increments_and_preserves_obituaries(monkeypatch) -> None:
+    from src import metrics_store
+
+    _install_fake_kv(monkeypatch, metrics_store)
+    metrics_store.record_daily("2026-05-27", obituaries=12, by_source={"legacy_com": 12}, kind="run")
+
+    # Two scans in one day each deliver leads — the count accumulates.
+    metrics_store.record_leads_delivered("2026-05-27", 3)
+    metrics_store.record_leads_delivered("2026-05-27", 2)
+    # A zero/negative delivery is a no-op.
+    metrics_store.record_leads_delivered("2026-05-27", 0)
+
+    entry = metrics_store.read_all()["2026-05-27"]
+    assert entry["leads_delivered"] == 5
+    # The obituary count and source breakdown for the day are untouched.
+    assert entry["obituaries"] == 12
+    assert entry["by_source"] == {"legacy_com": 12}
+    assert entry["kind"] == "run"

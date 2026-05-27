@@ -491,3 +491,33 @@ def test_metrics_endpoint_shape(monkeypatch) -> None:
     body = response.json()
     assert body["daily"] == []
     assert body["totals"]["days_tracked"] == 0
+
+
+def test_metrics_leads_delivered_endpoint_is_noop_without_kv(monkeypatch) -> None:
+    # No service secret + no KV: the endpoint accepts the report and no-ops the write.
+    monkeypatch.delenv("SERVICE_SHARED_SECRET", raising=False)
+    monkeypatch.delenv("KV_REST_API_URL", raising=False)
+    monkeypatch.delenv("KV_REST_API_TOKEN", raising=False)
+    from src.app import app
+
+    response = TestClient(app).post("/metrics/leads-delivered", json={"count": 4})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["leads_delivered"] == 4
+
+
+def test_metrics_leads_delivered_endpoint_requires_secret(monkeypatch) -> None:
+    monkeypatch.setenv("SERVICE_SHARED_SECRET", "s3cret")
+    from src.app import app
+
+    client = TestClient(app)
+    # Missing bearer is rejected.
+    assert client.post("/metrics/leads-delivered", json={"count": 4}).status_code == 401
+    # Correct bearer is accepted.
+    ok = client.post(
+        "/metrics/leads-delivered",
+        json={"count": 4},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    assert ok.status_code == 200

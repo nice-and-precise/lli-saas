@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
 
 from src.contracts import ObituaryEngineRunScanRequest, ObituaryEngineScanResult
 from src.metrics_store import read_all as read_metrics
+from src.metrics_store import record_leads_delivered
 from src.service import ObituaryIntelligenceService, get_service
 from src.state_store import ObituaryStateStore
 
@@ -65,6 +68,24 @@ def metrics() -> dict[str, object]:
             "leads_delivered": sum(entry.get("leads_delivered", 0) for entry in series),
         },
     }
+
+
+class LeadsDeliveredRequest(BaseModel):
+    count: int = Field(ge=0)
+    date: str | None = None
+
+
+@app.post("/metrics/leads-delivered")
+def metrics_leads_delivered(
+    request: LeadsDeliveredRequest,
+    _: None = Depends(require_service_secret),
+) -> dict[str, object]:
+    """Record leads newly delivered to a CRM today, so the success metric trends.
+    Server-to-server only (lead-engine calls it best-effort after delivery); guarded
+    by the same service secret as /run-scan. No-op without KV."""
+    date_str = request.date or datetime.now(timezone.utc).date().isoformat()
+    record_leads_delivered(date_str, request.count)
+    return {"status": "ok", "date": date_str, "leads_delivered": request.count}
 
 
 @app.post("/run-scan", response_model=ObituaryEngineScanResult)

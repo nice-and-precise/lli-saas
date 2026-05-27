@@ -9,8 +9,6 @@ from datetime import timedelta
 import feedparser
 from curl_cffi import requests as cffi_requests
 
-logger = logging.getLogger(__name__)
-
 from src.feed_sources import RSSSource, resolve_sources
 from src.normalization import (
     canonicalize_url,
@@ -23,7 +21,10 @@ from src.normalization import (
     is_iowa_relevant,
     normalize_whitespace,
     parse_optional_datetime,
+    utcnow,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -75,8 +76,6 @@ class ObituaryCollector:
         collected: list[ObituaryRecord] = []
         cutoff_date = None
         if lookback_days:
-            from src.normalization import utcnow
-
             cutoff_date = (utcnow() - timedelta(days=lookback_days)).date()
         for index, source in enumerate(sources):
             if len(collected) >= self._max_total:

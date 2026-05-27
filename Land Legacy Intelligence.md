@@ -1,5 +1,10 @@
 # Land Legacy Intelligence (LLI) Platform Overview
 
+> **⚠️ HISTORICAL / SUPERSEDED.** Early design doc describing a multi-tenant SaaS with a relational DB,
+> job queues, and billing — the pilot is a stateless-per-scan Vercel monorepo with none of that. For
+> current state see [README.md](README.md), [docs/system-architecture.md](docs/system-architecture.md),
+> and [docs/vercel-deployment.md](docs/vercel-deployment.md).
+
 The LLI platform is a multi-tenant SaaS built around the existing “Reaper Engine” for inherited-land leads.  All brokers share the same core services and codebase, with data scoped per tenant.  This shared model (row-level isolation) is cost-effective and simplifies updates【6†L119-L127】【28†L77-L85】. The components are:
 
 - **Reaper Engine (existing):** A data-processing engine that collects and normalizes obituary data, identifies deceased landowners, extracts heirs (via LLMs), and matches land records. It outputs a list of potential inherited-land leads (deceased owner, heirs, acres, location).

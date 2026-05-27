@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 # This job WRITES the corpus; it must not try to read+merge it while collecting.
 os.environ["OBITUARY_USE_PREFETCH"] = "0"
 
-from src.collector import ObituaryCollector  # noqa: E402
+from src.collector import ObituaryCollector, ObituaryRecord  # noqa: E402
 from src.legacy_collector import LegacyObituaryCollector  # noqa: E402
 from src.prefetch_store import write_prefetched  # noqa: E402
 
@@ -37,7 +37,7 @@ def main() -> None:
 
     # Dedupe by fingerprint (URL, or name+death_date fallback). RSS wins ties by
     # insertion order; both already produce clean ObituaryRecords.
-    by_fingerprint: dict[str, object] = {}
+    by_fingerprint: dict[str, ObituaryRecord] = {}
     for record in [*rss, *legacy]:
         by_fingerprint.setdefault(record.fingerprint, record)
     records = list(by_fingerprint.values())

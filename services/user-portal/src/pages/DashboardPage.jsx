@@ -33,6 +33,52 @@ async function fetchJson(baseUrl, path, options = {}) {
   return payload;
 }
 
+function splitCsvLine(line) {
+  const fields = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  fields.push(current);
+  return fields.map((field) => field.trim());
+}
+
+// Parse an owners CSV into [{owner_name, county, state}]. Accepts a header row
+// with name/owner_name/owner/client, county, and state columns (case-insensitive).
+function parseOwnersCsv(text) {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "");
+  if (lines.length < 2) return [];
+  const headers = splitCsvLine(lines[0]).map((header) => header.toLowerCase());
+  const nameIndex = headers.findIndex((header) => ["name", "owner_name", "owner", "client_name", "client"].includes(header));
+  const countyIndex = headers.findIndex((header) => header === "county");
+  const stateIndex = headers.findIndex((header) => header === "state");
+  const owners = [];
+  for (const line of lines.slice(1)) {
+    const cells = splitCsvLine(line);
+    const ownerName = (nameIndex >= 0 ? cells[nameIndex] : cells[0]) ?? "";
+    if (!ownerName.trim()) continue;
+    const owner = { owner_name: ownerName.trim() };
+    if (countyIndex >= 0 && cells[countyIndex]) owner.county = cells[countyIndex];
+    if (stateIndex >= 0 && cells[stateIndex]) owner.state = cells[stateIndex];
+    owners.push(owner);
+  }
+  return owners;
+}
+
 function formatColumnSummary(mapping, lliFields = []) {
   const labelsByKey = Object.fromEntries(lliFields.map((field) => [field.key, field.label]));
   return Object.entries(mapping?.columns ?? {})
@@ -228,6 +274,8 @@ export default function DashboardPage() {
   const [applyingCorrections, setApplyingCorrections] = useState(false);
   const [error, setError] = useState("");
   const [lastRunSummary, setLastRunSummary] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   async function refreshDashboard() {
     setLoading(true);
@@ -358,6 +406,35 @@ export default function DashboardPage() {
       setError(requestError.message);
     } finally {
       setSavingBoard(false);
+    }
+  }
+
+  async function handleImportOwners(event) {
+    event.preventDefault();
+    const file = event.target.elements.ownersCsv?.files?.[0];
+    if (!file) {
+      setError("Choose a CSV file of owners first.");
+      return;
+    }
+    setImporting(true);
+    setError("");
+    setImportResult(null);
+    try {
+      const owners = parseOwnersCsv(await file.text());
+      if (owners.length === 0) {
+        throw new Error("No owner rows found. Expected a header row with a name column (plus optional county, state).");
+      }
+      const crmAdapterBaseUrl = getRequiredServiceBaseUrl("crmAdapterBaseUrl");
+      const result = await fetchJson(crmAdapterBaseUrl, "/owners/import", {
+        method: "POST",
+        body: JSON.stringify({ owners }),
+      });
+      setImportResult(result);
+      await refreshDashboard();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -495,6 +572,27 @@ export default function DashboardPage() {
           <p>{error}</p>
         </section>
       ) : null}
+
+      <section className="panel">
+        <h2>Import your owners</h2>
+        <p className="lede">
+          Upload a CSV of your landowners to create your Monday <strong>Clients</strong> board
+          automatically — no manual data entry. Use a header row with a <code>name</code> column
+          (plus optional <code>county</code> and <code>state</code> columns).
+        </p>
+        <form onSubmit={handleImportOwners} className="import-form">
+          <input type="file" name="ownersCsv" accept=".csv,text/csv" />
+          <button type="submit" disabled={importing}>
+            {importing ? "Importing…" : "Import owners → Clients board"}
+          </button>
+        </form>
+        {importResult ? (
+          <p className="import-result">
+            ✅ Created {importResult.owners_created} owner
+            {importResult.owners_created === 1 ? "" : "s"} on the “{importResult.board_name}” board.
+          </p>
+        ) : null}
+      </section>
 
       <section className="grid dashboard-grid validation-grid">
         <article className="panel validation-card">

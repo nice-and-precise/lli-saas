@@ -69,17 +69,20 @@ needs no secret. Production values are documented in [vercel-deployment.md](verc
 - `http://localhost:8000/ready`
 - `http://localhost:8080/ready`
 - `http://localhost:3000/ready`
-- `http://localhost:5173/login`
+- `http://localhost:5173/` (the portal lands on `/dashboard`; there is no separate login page)
 
 ## First Functional Pass
 
-1. Complete Monday OAuth through `crm-adapter`.
+1. Click **Connect Monday** on the dashboard (or hit `crm-adapter` `/auth/login`) to complete OAuth.
+   The callback redirects back to `/dashboard?connected=1`.
 2. Confirm board discovery works with `GET /boards`.
-3. Confirm owner fetch works from the Monday `Clients` board with `GET /owners`.
+3. Populate owners: use the portal's **Import your owners** CSV panel, or
+   `POST /owners/import` with `{ "owners": [{ "owner_name", "county", "state" }] }` — this finds-or-creates
+   the Monday `Clients` board. Confirm `GET /owners` then returns them.
 4. Select a destination board.
-5. Save a board mapping.
-6. Launch a scan from the dashboard or `lead-engine /run-scan`.
-7. Confirm delivery history appears in the portal and the item shows up in Monday.
+5. Save a board mapping (or **Apply confident fixes**).
+6. Press **Run obituary scan** (or `POST lead-engine /run-scan`).
+7. Confirm delivery history appears in the portal and the items show up in Monday.
 
 ## Local Verification Commands
 

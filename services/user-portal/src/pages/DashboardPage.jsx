@@ -536,7 +536,6 @@ export default function DashboardPage() {
   const latestLead = lastRunSummary?.leads?.[0] ?? null;
   const crmFields = fieldCatalog.crm_fields ?? [];
   const lliFields = fieldCatalog.lli_fields ?? [];
-  const itemNameStrategies = DEFAULT_ITEM_NAME_STRATEGIES;
   const crmLinkBaseUrl = resolveServiceBaseUrl("crmAdapterBaseUrl");
   const mondayConnected = Boolean(validation?.capabilities?.token_present);
   const justConnected = useMemo(
@@ -862,7 +861,7 @@ export default function DashboardPage() {
                   setMappingDraft((current) => ({ ...current, item_name_strategy: event.target.value }))
                 }
               >
-                {itemNameStrategies.map((strategy) => (
+                {DEFAULT_ITEM_NAME_STRATEGIES.map((strategy) => (
                   <option key={strategy} value={strategy}>
                     {strategy}
                   </option>

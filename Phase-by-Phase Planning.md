@@ -1,4 +1,10 @@
 # Executive Summary  
+
+> **⚠️ HISTORICAL / SUPERSEDED.** Original Codex-era phase plan; references multi-repo layout and
+> Kubernetes-first deployment that do **not** match the shipped system. For current state see
+> [README.md](README.md), [docs/system-architecture.md](docs/system-architecture.md), and
+> [docs/vercel-deployment.md](docs/vercel-deployment.md).
+
 This document provides a detailed, actionable implementation plan for the LLI SaaS platform, designed to be fully executable by OpenAI Codex via VS Code on macOS. We assume the **Reaper Engine** (obituary processing) already exists and that David Whitaker’s landowner data resides in Monday.com CRM. The goal is to create a phased project structure with Codex-driven plans and tasks, including repository layouts, GSD integration, CI/CD pipelines, and Monday.com OAuth/GraphQL flows. Key artifacts (PLANS.md, TASK.md, AGENTS.md, `.planning/config.json`, Dockerfiles, Kubernetes manifests, GitHub Actions, and onboarding/runbook documents) are specified in full. We also cover deduplication logic, rate-limiting strategies, and environment estimates. All steps are presented in Markdown with sample commands and tables for clarity. GSD commands (e.g. `/gsd:plan-phase`) and Codex prompts (Goal/Context/Constraints/Done) are included to enable automated generation. Monday.com integration details include exact OAuth endpoints and GraphQL queries/mutations. A local checklist and developer onboarding guidance ensure the team can begin automation immediately.
 
 ## Repositories, Tools, and Local Environment  

@@ -21,15 +21,11 @@ const {
 
 const SOURCE_OWNER_BOARD_NAME = "Clients";
 
-function normalizeDuplicateValue(value) {
+function buildDuplicateKey(value) {
   return String(value ?? "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-}
-
-function buildDuplicateKey(value) {
-  return normalizeDuplicateValue(value);
 }
 
 function buildLeadIdentity(lead) {
@@ -154,6 +150,71 @@ async function persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRu
     deliveries,
     scan_runs: scanRuns,
   });
+}
+
+// Build a delivery record for a lead that already exists on the board (an
+// idempotent retry or a duplicate), persist it, and return the 200 response the
+// three "skipped" branches of deliverLead share. Only the status/item_id/
+// duplicate_of differ between those branches, so they're passed in.
+async function recordSkippedDelivery({ tokenStore, state, tenantId, transactionId, mappedLead, identity, duplicateKey, status, itemId, duplicateOf }) {
+  const deliveryRecord = buildDeliveryRecord({
+    tenantId,
+    transactionId,
+    boardId: state.board.id,
+    lead: mappedLead.summary,
+    itemName: mappedLead.itemName,
+    duplicateKey,
+    obituaryUrl: mappedLead.summary.obituary_url ?? null,
+    fallbackDuplicateKey: identity.fallbackKey,
+    status,
+    itemId,
+    duplicateOf,
+  });
+  const scanRuns = upsertScanRun(state.scan_runs ?? [], deliveryRecord);
+  await persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns);
+
+  return {
+    statusCode: 200,
+    body: {
+      tenant_id: tenantId,
+      board_id: state.board.id,
+      delivery_id: deliveryRecord.id,
+      transaction_id: transactionId,
+      status: deliveryRecord.status,
+      item_id: deliveryRecord.item_id,
+      item_name: mappedLead.itemName,
+      duplicate_of: deliveryRecord.duplicate_of,
+      lead: mappedLead.summary,
+    },
+  };
+}
+
+const REQUIRED_LLI_FIELDS = ["deceased_name", "owner_name", "obituary_url", "match_score", "tier"];
+
+// Field catalog shown by the mapping editor: the board's CRM columns plus the
+// LLI owner-data contract fields, annotated with the column each is mapped to.
+// Shared by GET and PUT /mapping so the two responses can never drift.
+function buildFieldCatalog(state) {
+  return {
+    crm_fields: (state.board?.columns ?? []).map((column) => ({
+      id: String(column.id),
+      label: column.title ?? String(column.id),
+      type: column.type ?? "unknown",
+      description: `CRM field available on ${state.board?.name ?? "the selected board"}.`,
+      example: column.settings_str ? `Monday settings: ${String(column.settings_str).slice(0, 120)}` : null,
+    })),
+    lli_fields: Object.entries(FIELD_METADATA).map(([key, metadata]) => ({
+      key,
+      label: metadata.label,
+      description: metadata.description ?? null,
+      example: metadata.example ?? null,
+      source_hint: metadata.sourceHint ?? null,
+      recommended_types: metadata.recommendedTypes ?? [],
+      aliases: metadata.aliases ?? [],
+      required: REQUIRED_LLI_FIELDS.includes(key),
+      mapped_column_id: state.board_mapping?.columns?.[key] ?? null,
+    })),
+  };
 }
 
 function createStatusSnapshot(state, tenantId) {
@@ -387,70 +448,34 @@ function createApp(options = {}) {
 
     const persistedTransaction = findExistingDeliveryByTransactionId(state.deliveries, transactionId);
     if (persistedTransaction?.item_id) {
-      const deliveryRecord = buildDeliveryRecord({
+      return recordSkippedDelivery({
+        tokenStore,
+        state,
         tenantId,
         transactionId,
-        boardId: state.board.id,
-        lead: mappedLead.summary,
-        itemName: mappedLead.itemName,
+        mappedLead,
+        identity,
         duplicateKey,
-        obituaryUrl: mappedLead.summary.obituary_url ?? null,
-        fallbackDuplicateKey: identity.fallbackKey,
         status: "skipped_idempotent_retry",
         itemId: persistedTransaction.item_id,
         duplicateOf: persistedTransaction.item_id,
       });
-      const scanRuns = upsertScanRun(state.scan_runs ?? [], deliveryRecord);
-      await persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns);
-
-      return {
-        statusCode: 200,
-        body: {
-          tenant_id: tenantId,
-          board_id: state.board.id,
-          delivery_id: deliveryRecord.id,
-          transaction_id: transactionId,
-          status: deliveryRecord.status,
-          item_id: deliveryRecord.item_id,
-          item_name: mappedLead.itemName,
-          duplicate_of: deliveryRecord.duplicate_of,
-          lead: mappedLead.summary,
-        },
-      };
     }
 
     const persistedDuplicate = findExistingDeliveryByIdentity(state.deliveries, identity);
     if (persistedDuplicate?.item_id) {
-      const deliveryRecord = buildDeliveryRecord({
+      return recordSkippedDelivery({
+        tokenStore,
+        state,
         tenantId,
         transactionId,
-        boardId: state.board.id,
-        lead: mappedLead.summary,
-        itemName: mappedLead.itemName,
+        mappedLead,
+        identity,
         duplicateKey,
-        obituaryUrl: mappedLead.summary.obituary_url ?? null,
-        fallbackDuplicateKey: identity.fallbackKey,
         status: "skipped_duplicate",
         itemId: persistedDuplicate.item_id ?? null,
         duplicateOf: persistedDuplicate.item_id ?? persistedDuplicate.duplicate_of ?? null,
       });
-      const scanRuns = upsertScanRun(state.scan_runs ?? [], deliveryRecord);
-      await persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns);
-
-      return {
-        statusCode: 200,
-        body: {
-          tenant_id: tenantId,
-          board_id: state.board.id,
-          delivery_id: deliveryRecord.id,
-          transaction_id: transactionId,
-          status: deliveryRecord.status,
-          item_id: deliveryRecord.item_id,
-          item_name: mappedLead.itemName,
-          duplicate_of: deliveryRecord.duplicate_of,
-          lead: mappedLead.summary,
-        },
-      };
     }
 
     let existingItems;
@@ -469,36 +494,18 @@ function createApp(options = {}) {
     const duplicateMatch = existingItems.find((item) => buildDuplicateKey(item.name) === duplicateKey);
 
     if (duplicateMatch) {
-      const deliveryRecord = buildDeliveryRecord({
+      return recordSkippedDelivery({
+        tokenStore,
+        state,
         tenantId,
         transactionId,
-        boardId: state.board.id,
-        lead: mappedLead.summary,
-        itemName: mappedLead.itemName,
+        mappedLead,
+        identity,
         duplicateKey,
-        obituaryUrl: mappedLead.summary.obituary_url ?? null,
-        fallbackDuplicateKey: identity.fallbackKey,
         status: "skipped_duplicate",
         itemId: duplicateMatch.id ?? null,
         duplicateOf: duplicateMatch.id ?? null,
       });
-      const scanRuns = upsertScanRun(state.scan_runs ?? [], deliveryRecord);
-      await persistDeliveryState(tokenStore, tenantId, deliveryRecord, scanRuns);
-
-      return {
-        statusCode: 200,
-        body: {
-          tenant_id: tenantId,
-          board_id: state.board.id,
-          delivery_id: deliveryRecord.id,
-          transaction_id: transactionId,
-          status: deliveryRecord.status,
-          item_id: duplicateMatch.id ?? null,
-          item_name: mappedLead.itemName,
-          duplicate_of: duplicateMatch.id ?? null,
-          lead: mappedLead.summary,
-        },
-      };
     }
 
     try {
@@ -839,26 +846,7 @@ function createApp(options = {}) {
       tenant_id: tenantId,
       board_id: state.board.id,
       mapping: state.board_mapping ?? createDefaultMapping(),
-      field_catalog: {
-        crm_fields: (state.board?.columns ?? []).map((column) => ({
-          id: String(column.id),
-          label: column.title ?? String(column.id),
-          type: column.type ?? "unknown",
-          description: `CRM field available on ${state.board?.name ?? "the selected board"}.`,
-          example: column.settings_str ? `Monday settings: ${String(column.settings_str).slice(0, 120)}` : null,
-        })),
-        lli_fields: Object.entries(FIELD_METADATA).map(([key, metadata]) => ({
-          key,
-          label: metadata.label,
-          description: metadata.description ?? null,
-          example: metadata.example ?? null,
-          source_hint: metadata.sourceHint ?? null,
-          recommended_types: metadata.recommendedTypes ?? [],
-          aliases: metadata.aliases ?? [],
-          required: ["deceased_name", "owner_name", "obituary_url", "match_score", "tier"].includes(key),
-          mapped_column_id: state.board_mapping?.columns?.[key] ?? null,
-        })),
-      },
+      field_catalog: buildFieldCatalog(state),
     });
   });
 
@@ -886,26 +874,7 @@ function createApp(options = {}) {
       board_id: state.board.id,
       mapping: persistedState.board_mapping,
       validation,
-      field_catalog: {
-        crm_fields: (persistedState.board?.columns ?? []).map((column) => ({
-          id: String(column.id),
-          label: column.title ?? String(column.id),
-          type: column.type ?? "unknown",
-          description: `CRM field available on ${persistedState.board?.name ?? "the selected board"}.`,
-          example: column.settings_str ? `Monday settings: ${String(column.settings_str).slice(0, 120)}` : null,
-        })),
-        lli_fields: Object.entries(FIELD_METADATA).map(([key, metadata]) => ({
-          key,
-          label: metadata.label,
-          description: metadata.description ?? null,
-          example: metadata.example ?? null,
-          source_hint: metadata.sourceHint ?? null,
-          recommended_types: metadata.recommendedTypes ?? [],
-          aliases: metadata.aliases ?? [],
-          required: ["deceased_name", "owner_name", "obituary_url", "match_score", "tier"].includes(key),
-          mapped_column_id: persistedState.board_mapping?.columns?.[key] ?? null,
-        })),
-      },
+      field_catalog: buildFieldCatalog(persistedState),
     });
   });
 

@@ -18,10 +18,14 @@ The gate should cover:
 - `obituary-intelligence-engine` tests
 - `crm-adapter` tests
 - `user-portal` tests and production build
-- Docker builds for all four services
-- Helm lint and rendered-manifest validation
-- CronJob and PVC checks
-- Kubernetes dry-run validation when `kubectl` is configured
+
+**For the live pilot (Vercel — the canonical path, see [vercel-deployment.md](vercel-deployment.md)):**
+verify the four Vercel projects deploy, `/ready` is green on the backend domains, the Upstash KV
+integration env vars are present, the AI Gateway key is set, and the daily Cron is scheduled.
+
+**Legacy self-host path only (`infra/`):** Docker builds for all four services, Helm lint and
+rendered-manifest validation, CronJob/PVC checks, and `kubectl` dry-runs. These are **optional** and
+not required for the Vercel pilot.
 
 ## Pilot Rehearsal
 
@@ -37,7 +41,8 @@ After the automated gate passes:
 8. Run the obituary scan from the dashboard.
 9. Verify the dashboard shows delivery history, lead tier, match score, and scan-run status.
 10. Verify the created Monday item contains the expected mapped obituary and heir values.
-11. If running in Kubernetes, confirm both PVCs are mounted and the daily scan CronJob renders correctly.
+11. Confirm the GitHub Actions obituary-prefetch run is green and the daily Vercel Cron is scheduled.
+    (Legacy self-host only: confirm both PVCs are mounted and the CronJob renders.)
 
 ## Stop Conditions
 

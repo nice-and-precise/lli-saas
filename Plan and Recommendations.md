@@ -1,5 +1,10 @@
 # Implementation Plan and Recommendations
 
+> **⚠️ HISTORICAL / SUPERSEDED.** Early planning document; it describes a multi-repo / Kubernetes /
+> Stripe-billing design that does **not** reflect the shipped system (a Vercel monorepo pilot). For
+> current state see [README.md](README.md), [docs/system-architecture.md](docs/system-architecture.md),
+> and [docs/vercel-deployment.md](docs/vercel-deployment.md).
+
 Below is a structured plan covering repositories, tools, and processes to implement the SaaS platform using the Codex VS Code extension and GSD framework. Each section includes concrete steps and best practices, with relevant references for guidance.
 
 ## 1. Repositories, Tools, and VSCode Codex Setup

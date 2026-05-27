@@ -27,7 +27,7 @@ Example request:
   "owner_limit": 1000,
   "lookback_days": 7,
   "reference_date": "2026-03-12",
-  "source_ids": ["kwbg_boone", "the_gazette"]
+  "source_ids": ["kwbg_boone", "kcim_carroll"]
 }
 ```
 

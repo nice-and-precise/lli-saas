@@ -17,7 +17,10 @@ Start with [docs/README.md](docs/README.md). The detailed architecture source of
 - `services/lead-engine` owns `run_scan()` orchestration
 - `services/obituary-intelligence-engine` owns obituary collection, extraction, matching, and tiering
 - `services/crm-adapter` owns Monday OAuth, owner normalization, board mapping, duplicate handling, and delivery
-- `services/user-portal` is the operator UI for board selection, mapping, scan launch, and visibility
+- `services/user-portal` is the operator UI: **Connect-Monday onboarding**, **owner CSV import**
+  (auto-creates the Monday `Clients` board), board selection, mapping, one-click scan, and visibility
+- a daily **GitHub Actions** job pre-collects a statewide Iowa obituary corpus (RSS + Legacy.com) into
+  KV that the engine merges at scan time — see [docs/vercel-deployment.md](docs/vercel-deployment.md)
 - the pilot is deployed on **Vercel** — see [docs/vercel-deployment.md](docs/vercel-deployment.md)
   (static portal + three backend functions, state in Vercel KV/Upstash, Anthropic via Vercel AI
   Gateway, daily scan on Vercel Cron)

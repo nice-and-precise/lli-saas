@@ -114,8 +114,12 @@
           },
           "token_store": {
             "type": "string",
-            "description": "Backend name only (file/kv/memory) — never the filesystem path.",
-            "enum": ["file", "kv", "memory"]
+            "description": "Backend name only (file/kv/memory) \u2014 never the filesystem path.",
+            "enum": [
+              "file",
+              "kv",
+              "memory"
+            ]
           }
         },
         "required": [
@@ -1376,6 +1380,154 @@
           },
           "502": {
             "description": "Monday board query failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/boards/select-source": {
+      "post": {
+        "tags": [
+          "Boards"
+        ],
+        "summary": "Override the owner SOURCE board (the board scans read landowners from)",
+        "description": "Persists `source_board` for the tenant. The source board is normally auto-detected on first connect; use this to override it. Mirrors /boards/select but targets the source (input) board rather than the destination.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectBoardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Source board saved and validated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing board_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Board not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tenant has not connected Monday OAuth",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/boards/auto-provision-destination": {
+      "post": {
+        "tags": [
+          "Boards"
+        ],
+        "summary": "Find-or-create the 'Land Legacy Leads' destination board and auto-map every field",
+        "description": "Idempotent. Creates a board named 'Land Legacy Leads' (if absent) with one correctly-typed column per LLI lead field, selects it as the destination, and builds the complete field->column mapping. Safe to call repeatedly \u2014 it is also the explicit retry for a failed auto-provision.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Destination board provisioned + mapped (returns board, mapping, validation)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tenant has not connected Monday OAuth",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Monday request failed while provisioning",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboard/auto-provision": {
+      "post": {
+        "tags": [
+          "Onboarding"
+        ],
+        "summary": "One-shot auto-onboarding (detect source board + provision destination + map)",
+        "description": "Called by the portal once on the first connected dashboard load (gated on token_present && !onboarding.auto_provisioned_at). Best-effort and idempotent: auto-detects the owner source board and provisions the destination board + mapping, then stamps `onboarding.auto_provisioned_at` only when the destination succeeded (so a transient failure self-heals on reload). Returns the post-provision snapshot.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Auto-provision ran (auto_provisioned) or was already done (already_provisioned)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tenant has not connected Monday OAuth",
             "content": {
               "application/json": {
                 "schema": {

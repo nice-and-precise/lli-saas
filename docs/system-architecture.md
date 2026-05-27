@@ -15,7 +15,7 @@ This document is the architecture source of truth for `lli-saas`.
 
 ```mermaid
 flowchart LR
-    CRM["Monday.com"] -->|"Clients board"| CA["crm-adapter"]
+    CRM["Monday.com"] -->|"owner source board (auto-detected)"| CA["crm-adapter"]
     CA -->|"OwnerRecord[]"| LE["lead-engine"]
     LE -->|"scan request"| OE["obituary-intelligence-engine"]
     OE -->|"Lead[]"| LE
@@ -29,7 +29,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    A["Run Scan Request"] --> B["crm-adapter<br/>fetch Owners from Clients"]
+    A["Run Scan Request"] --> B["crm-adapter<br/>fetch Owners from source board"]
     B --> C["lead-engine<br/>validate + orchestrate"]
     C --> D["obituary-intelligence-engine<br/>RSS collection"]
     D --> E["actionability gate + dedupe"]

@@ -76,14 +76,16 @@ needs no secret. Production values are documented in [vercel-deployment.md](verc
 
 1. Click **Connect Monday** on the dashboard (or hit `crm-adapter` `/auth/login`) to complete OAuth.
    The callback redirects back to `/dashboard?connected=1`.
-2. Confirm board discovery works with `GET /boards`.
-3. Populate owners: use the portal's **Import your owners** CSV panel, or
-   `POST /owners/import` with `{ "owners": [{ "owner_name", "county", "state" }] }` — this finds-or-creates
-   the Monday `Clients` board. Confirm `GET /owners` then returns them.
-4. Select a destination board.
-5. Save a board mapping (or **Apply confident fixes**).
-6. Press **Run obituary scan** (or `POST lead-engine /run-scan`).
-7. Confirm delivery history appears in the portal and the items show up in Monday.
+2. **Auto-onboarding runs once** (the portal calls `POST /onboard/auto-provision`): it auto-detects the
+   owner **source** board, creates the **"Land Legacy Leads"** destination board with typed columns, and
+   auto-maps every field. Confirm via `GET /status` (`source_board`, `board`, `onboarding.auto_provisioned_at`)
+   and `GET /owners` (returns owners from the detected source board).
+3. (Overrides, optional) `POST /boards/select-source` to change the source board;
+   `POST /boards/auto-provision-destination` to (re)build the destination; `PUT /mapping` to tweak mapping.
+   If no owner board is detected, fall back to **Import your owners** CSV panel / `POST /owners/import`
+   (finds-or-creates a `Clients` board).
+4. Press **Run obituary scan** (or `POST lead-engine /run-scan`).
+5. Confirm delivery history appears in the portal and the items show up in Monday.
 
 ## Local Verification Commands
 
@@ -91,7 +93,10 @@ needs no secret. Production values are documented in [vercel-deployment.md](verc
 - `cd services/user-portal && npm test`
 - `cd services/lead-engine && python3 -m pytest`
 - `cd services/obituary-intelligence-engine && python3 -m pytest`
-- `bash scripts/pilot-readiness-check.sh`
+- `bash scripts/pilot-readiness-check.sh` — offline gate (tests + docker + helm + manifest assertions)
+- `bash scripts/live-smoke.sh` — **live** prod smoke (health, readiness chain, auto-onboarding state,
+  no duplicate boards, metrics, new endpoints). Add `--write` to also re-run auto-provision (idempotent)
+  and a bounded scan. Read-only without the flag, so it's safe to run anytime.
 
 ## Notes
 

@@ -22,6 +22,9 @@ The gate should cover:
 **For the live pilot (Vercel — the canonical path, see [vercel-deployment.md](vercel-deployment.md)):**
 verify the four Vercel projects deploy, `/ready` is green on the backend domains, the Upstash KV
 integration env vars are present, the heir-extraction LLM key is set (`GEMINI_API_KEY`), and the daily Cron is scheduled.
+Then run **`bash scripts/live-smoke.sh --write`** against prod — it asserts health + the readiness chain,
+the auto-onboarding state (source/destination/marker), no duplicate boards, the metrics surface, the new
+endpoints, idempotent re-provision, and a healthy scan. A green run is the fastest "is prod actually working" check.
 
 **Legacy self-host path only (`infra/`):** Docker builds for all four services, Helm lint and
 rendered-manifest validation, CronJob/PVC checks, and `kubectl` dry-runs. These are **optional** and

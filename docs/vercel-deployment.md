@@ -8,6 +8,29 @@ daily scan on Vercel Cron. No separate server is required.
 > The Kubernetes/Helm manifests under [`infra/`](../infra/) are the **legacy /
 > alternative self-host path** and are superseded by this document for the pilot.
 
+## Obituary collection (sources + anti-bot)
+
+The obituary engine collects from a curated list of Iowa obituary RSS feeds in
+`services/obituary-intelligence-engine/src/feed_sources.py`. Two notes:
+
+- **TLS impersonation**: several sources (the Lee Enterprises metro dailies —
+  Waterloo Courier, Quad-City Times, Sioux City Journal, Globe Gazette, Muscatine
+  Journal) return **429** to a default HTTP client; their anti-bot checks the TLS/JA3
+  fingerprint, not just the user-agent. The collector therefore fetches with
+  **`curl_cffi` Chrome impersonation** (`collector.py`). Scrapling wraps the same
+  engine but bundles ~270MB of Playwright/patchright, which exceeds Vercel's 250MB
+  function limit, so we depend on `curl_cffi` directly.
+- **Budget caps** (env-tunable): `OBITUARY_MAX_ENTRIES_PER_SOURCE` (6),
+  `OBITUARY_MAX_TOTAL_OBITUARIES` (36), `OBITUARY_INTER_SOURCE_DELAY_SECONDS` (0.15)
+  keep a scan well under the 60s Hobby cap (~17s observed) while spreading coverage.
+- **Feed list is an operational item** — feeds rot (404/format changes); re-probe
+  periodically with curl_cffi Chrome impersonation. The collector is resilient: any
+  source that fails (404/429/timeout/parse) is skipped, never crashing the scan.
+- **Statewide aggregation (Legacy.com)** is browser-only anti-bot and out of reach
+  for the serverless function. The future path is a free GitHub-Actions cron running
+  a browser fetcher (Scrapling `StealthyFetcher`) that writes obituaries to KV for the
+  engine to read — deliberately **not** built for the pilot.
+
 ## Projects (one monorepo → four Vercel projects)
 
 | Vercel project | Root directory | Type | Domain |

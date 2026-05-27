@@ -170,6 +170,11 @@ test("shows pre-scan validation feedback, applies confident corrections, and blo
         },
       }),
     })
+    // 5th fetch: the mount-once pipeline-metrics call (lead-engine /metrics).
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ daily: [], totals: { days_tracked: 0, obituaries: 0, leads_delivered: 0 } }),
+    })
     .mockResolvedValueOnce({
       ok: true,
       json: async () => ({

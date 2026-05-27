@@ -20,9 +20,11 @@ Pilot operator portal for `lli-saas` with live Monday delivery status, destinati
 The dashboard:
 
 - reads status, boards, and mapping from `crm-adapter`
-- lets the operator select a destination board
-- lets the operator edit the board mapping for rich obituary/heir fields
+- **auto-onboards on first connect** — calls `POST /onboard/auto-provision`, which detects the owner
+  source board, builds the "Land Legacy Leads" destination board, and maps every field automatically
+- lets the operator override the source board, destination board, and mapping if needed
 - launches scans through `lead-engine /run-scan`
-- shows delivery history, latest lead summary, and scan-run visibility
+- shows an adaptive "Next step" cue, pipeline metrics, delivery history, and scan-run visibility
 
-For local pilot work, connect Monday first, select the destination board, save the mapping, then run a scan that pulls fresh owner data from the Monday `Clients` board.
+For local pilot work, just connect Monday — onboarding configures itself, then press **Run obituary
+scan**. Owners are read from the auto-detected source board (override or CSV-import as fallbacks).

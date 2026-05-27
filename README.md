@@ -23,8 +23,8 @@ Start with [docs/README.md](docs/README.md). The detailed architecture source of
 - a daily **GitHub Actions** job pre-collects a statewide Iowa obituary corpus (RSS + Legacy.com) into
   KV that the engine merges at scan time — see [docs/vercel-deployment.md](docs/vercel-deployment.md)
 - the pilot is deployed on **Vercel** — see [docs/vercel-deployment.md](docs/vercel-deployment.md)
-  (static portal + three backend functions, state in Vercel KV/Upstash, Anthropic via Vercel AI
-  Gateway, daily scan on Vercel Cron)
+  (static portal + three backend functions, state in Vercel KV/Upstash, LLM heir extraction via
+  Google Gemini, daily scan on Vercel Cron)
 - `infra/` (Kubernetes/Helm + CronJob) is the **legacy / alternative self-host path**, superseded by
   the Vercel deployment for the pilot
 
@@ -84,7 +84,7 @@ flowchart TB
     CA --> Monday["Monday.com"]
     CA --- CAKV["Vercel KV / Upstash<br/>OAuth + board state + deliveries"]
     OE --- OEKV["Vercel KV / Upstash<br/>feed checkpoints + fingerprints"]
-    OE --> AIGW["Vercel AI Gateway → Anthropic"]
+    OE --> LLM["Google Gemini<br/>(heir extraction; heuristic fallback)"]
 ```
 
 ## Canonical Contracts

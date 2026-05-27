@@ -21,7 +21,7 @@ The gate should cover:
 
 **For the live pilot (Vercel — the canonical path, see [vercel-deployment.md](vercel-deployment.md)):**
 verify the four Vercel projects deploy, `/ready` is green on the backend domains, the Upstash KV
-integration env vars are present, the AI Gateway key is set, and the daily Cron is scheduled.
+integration env vars are present, the heir-extraction LLM key is set (`GEMINI_API_KEY`), and the daily Cron is scheduled.
 
 **Legacy self-host path only (`infra/`):** Docker builds for all four services, Helm lint and
 rendered-manifest validation, CronJob/PVC checks, and `kubectl` dry-runs. These are **optional** and

@@ -1,6 +1,8 @@
 const axios = require("axios");
 const {
   CREATE_ITEM_MUTATION,
+  CREATE_BOARD_MUTATION,
+  CREATE_COLUMN_MUTATION,
   LIST_BOARDS_QUERY,
   LIST_BOARD_ITEMS_PAGE_QUERY,
   NEXT_BOARD_ITEMS_PAGE_QUERY,
@@ -182,6 +184,24 @@ class MondayClient {
     });
 
     return response.data?.create_item ?? null;
+  }
+
+  async createBoard({ token, boardName, boardKind = "public" }) {
+    const response = await this.executeGraphQL({
+      query: CREATE_BOARD_MUTATION,
+      variables: { boardName, boardKind },
+      token,
+    });
+    return response.data?.create_board ?? null;
+  }
+
+  async createColumn({ token, boardId, title, columnType = "text" }) {
+    const response = await this.executeGraphQL({
+      query: CREATE_COLUMN_MUTATION,
+      variables: { boardId, title, columnType },
+      token,
+    });
+    return response.data?.create_column ?? null;
   }
 }
 

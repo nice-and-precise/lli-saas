@@ -34,6 +34,22 @@ const CREATE_ITEM_MUTATION = `
   }
 `;
 
+const CREATE_BOARD_MUTATION = `
+  mutation CreateBoard($boardName: String!, $boardKind: BoardKind!) {
+    create_board(board_name: $boardName, board_kind: $boardKind) {
+      id
+    }
+  }
+`;
+
+const CREATE_COLUMN_MUTATION = `
+  mutation CreateColumn($boardId: ID!, $title: String!, $columnType: ColumnType!) {
+    create_column(board_id: $boardId, title: $title, column_type: $columnType) {
+      id
+    }
+  }
+`;
+
 const LIST_BOARD_ITEMS_PAGE_QUERY = `
   query ListBoardItemsPage($boardIds: [ID!], $limit: Int!) {
     boards(ids: $boardIds) {
@@ -61,6 +77,8 @@ const NEXT_BOARD_ITEMS_PAGE_QUERY = `
 
 module.exports = {
   CREATE_ITEM_MUTATION,
+  CREATE_BOARD_MUTATION,
+  CREATE_COLUMN_MUTATION,
   LIST_BOARDS_QUERY,
   LIST_BOARD_ITEMS_PAGE_QUERY,
   NEXT_BOARD_ITEMS_PAGE_QUERY,

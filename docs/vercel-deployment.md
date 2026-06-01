@@ -141,15 +141,17 @@ so they rely on Vercel Deployment Protection (Password) being enabled:
   obituary caps + dedup) or create boards/items in the connected Monday workspace.
   **Action: enable Vercel Deployment Protection → Password on `lli-crm-adapter` and
   `lli-lead-engine`, with a bypass for `/auth/callback` (Monday must reach it).**
-- **OAuth `state` validation** (login-CSRF / token overwrite): **DEFERRED.** Both a
-  cookie-based and a stateless HMAC-signed `state` check were built (PR
-  `sec/oauth-state-validation`) and tested live — both rejected real connects with
-  `invalid_oauth_state`, because monday's callback does not return the `state` param
-  we sent the way its docs imply (or alters it). prod is rolled back to no `state`
-  check so the connect flow works. Low practical risk for the single-tenant pilot.
-  To resume: add temporary request logging on `/auth/callback` to capture the exact
-  query params monday sends, confirm `state` presence/integrity, then adjust before
-  redeploying. Do **not** redeploy that branch until then.
+- **OAuth `state` validation** (login-CSRF / token overwrite): **ENFORCED.**
+  `/auth/login` sends a stateless HMAC-signed `state` (`nonce.timestamp.HMAC`, 15-min
+  freshness, no cookie → serverless-safe; see `crm-adapter/src/oauthState.js`) and
+  `/auth/callback` rejects any callback whose `state` we didn't sign with `400
+  invalid_oauth_state`, before the token exchange. A 2026-06-01 live capture proved
+  Monday echoes `state` back byte-for-byte (callback query keys: `code/region/scope/
+  state`) — the earlier "Monday doesn't return state" deferral was a deploy-timing
+  artifact of a rapid cookie→stateless iteration, not Monday behavior. **Known
+  constraint:** enforcement only accepts connects that began at our `/auth/login`; a
+  marketplace-install or Monday-app re-auth (no prior signed state) would be rejected.
+  Correct for the single-tenant button-only pilot; revisit before multi-tenant.
 - `x-tenant-id` is client-controlled; fine for the single-tenant pilot, but bind it
   to an authenticated principal before onboarding a second tenant.
 

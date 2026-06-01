@@ -1129,20 +1129,10 @@
           "Auth"
         ],
         "summary": "Redirect to Monday OAuth authorization",
-        "parameters": [
-          {
-            "name": "state",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Opaque state value passed through Monday OAuth."
-          }
-        ],
+        "description": "Generates a signed CSRF `state` server-side and redirects the browser to Monday's OAuth authorization screen. Any client-supplied `state` is ignored.",
         "responses": {
           "302": {
-            "description": "Redirects browser to Monday OAuth"
+            "description": "Redirects browser to Monday OAuth (with a signed state)"
           }
         }
       }
@@ -1152,7 +1142,8 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Exchange OAuth code and persist Monday token state",
+        "summary": "Exchange OAuth code and persist Monday token, then redirect to the portal",
+        "description": "Verifies the signed `state` (CSRF), exchanges the code for a Monday token, persists it, and 302-redirects the operator to the portal dashboard. Rejects any callback whose state was not signed by /auth/login.",
         "parameters": [
           {
             "name": "code",
@@ -1162,36 +1153,23 @@
               "type": "string"
             },
             "description": "Monday OAuth authorization code."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Signed CSRF state issued by /auth/login and echoed back by Monday."
           }
         ],
         "responses": {
-          "200": {
-            "description": "Monday account connected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "connected": {
-                      "type": "boolean"
-                    },
-                    "account_id": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "connected",
-                    "account_id"
-                  ]
-                }
-              }
-            }
+          "302": {
+            "description": "Token persisted; redirects to {PORTAL_BASE_URL}/dashboard?connected=1"
           },
           "400": {
-            "description": "Missing OAuth code",
+            "description": "Missing OAuth code, invalid/expired `state` (invalid_oauth_state), or token exchange failed",
             "content": {
               "application/json": {
                 "schema": {

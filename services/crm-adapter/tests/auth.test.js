@@ -4,6 +4,13 @@ const path = require("path");
 
 const { buildTransactionId, createApp, SOURCE_OWNER_BOARD_NAME } = require("../src/app");
 const { FileTokenStore } = require("../src/tokenStore");
+const { resolveOAuthStateSecret, signOAuthState } = require("../src/oauthState");
+
+// A `state` valid for an app created without an explicit clientSecret (falls back
+// to the dev secret), mirroring what /auth/login signs and Monday echoes back.
+function validOAuthState() {
+  return signOAuthState(resolveOAuthStateSecret());
+}
 
 function buildLead(overrides = {}) {
   return {
@@ -105,13 +112,50 @@ describe("crm-adapter routes", () => {
     };
     const app = createApp({ mondayClient, tokenStore });
 
-    const response = await request(app).get("/auth/callback?code=abc123");
+    const state = validOAuthState();
+    const response = await request(app).get(`/auth/callback?code=abc123&state=${state}`);
 
     // Callback now redirects the operator back to the portal instead of JSON.
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe("https://lli.jordandamhof.com/dashboard?connected=1");
     expect(mondayClient.exchangeCodeForToken).toHaveBeenCalledWith("abc123");
     expect(tokenStore.save).toHaveBeenCalledWith("monday_access_token", "token-123");
+  });
+
+  it("rejects /auth/callback with a missing or forged state (CSRF guard)", async () => {
+    const mondayClient = {
+      exchangeCodeForToken: vi.fn(),
+      getAuthorizationUrl: vi.fn(),
+    };
+    const tokenStore = { save: vi.fn() };
+    const app = createApp({ mondayClient, tokenStore });
+
+    const noState = await request(app).get("/auth/callback?code=abc123");
+    expect(noState.statusCode).toBe(400);
+    expect(noState.body).toEqual({ error: "invalid_oauth_state" });
+
+    const forged = await request(app).get("/auth/callback?code=abc123&state=not.a.validsig");
+    expect(forged.statusCode).toBe(400);
+    expect(forged.body).toEqual({ error: "invalid_oauth_state" });
+
+    // A forged callback must never reach the token exchange or persist a token.
+    expect(mondayClient.exchangeCodeForToken).not.toHaveBeenCalled();
+    expect(tokenStore.save).not.toHaveBeenCalled();
+  });
+
+  it("issues a signed, self-verifying state on /auth/login", async () => {
+    const mondayClient = {
+      getAuthorizationUrl: vi.fn((state) => `https://auth.monday.com/oauth2/authorize?state=${state}`),
+    };
+    const app = createApp({ mondayClient, tokenStore: { save: vi.fn() } });
+
+    const response = await request(app).get("/auth/login");
+
+    expect(response.statusCode).toBe(302);
+    const [signedState] = mondayClient.getAuthorizationUrl.mock.calls[0];
+    // nonce.timestamp.hmac — three parts, not the old static placeholder.
+    expect(signedState.split(".")).toHaveLength(3);
+    expect(signedState).not.toBe("lli-saas-state");
   });
 
   it("lists boards using the persisted OAuth token", async () => {

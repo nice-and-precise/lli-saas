@@ -13,6 +13,7 @@ const {
 } = require("./ownerRecord");
 const { createProfilingReport } = require("./profiler");
 const { createDefaultMapping, DEFAULT_TENANT_ID, createTokenStore } = require("./tokenStore");
+const { resolveOAuthStateSecret, signOAuthState, verifyOAuthState } = require("./oauthState");
 const {
   FIELD_METADATA,
   buildValidationResponse,
@@ -400,6 +401,7 @@ function createApp(options = {}) {
       redirectUri: mondayConfig.MONDAY_REDIRECT_URI,
       apiBaseUrl: options.apiBaseUrl ?? process.env.MONDAY_API_BASE_URL,
     });
+  const oauthStateSecret = resolveOAuthStateSecret({ clientSecret: mondayConfig.MONDAY_CLIENT_SECRET });
 
   // CORS: the operator portal is served from a different subdomain
   // (lli.jordandamhof.com) than this API, so browser fetches are cross-origin.
@@ -644,16 +646,26 @@ function createApp(options = {}) {
   });
 
   app.get("/auth/login", (req, res) => {
-    const state = req.query.state || "lli-saas-state";
-    const location = mondayClient.getAuthorizationUrl(state);
-    res.redirect(location);
+    // CSRF protection: a signed, self-verifying `state` (no cookie) echoed to
+    // Monday and re-verified on the callback so a forged code can't overwrite
+    // the stored token.
+    const state = signOAuthState(oauthStateSecret);
+    res.redirect(mondayClient.getAuthorizationUrl(state));
   });
 
   app.get("/auth/callback", async (req, res) => {
-    const { code } = req.query;
+    const { code, state } = req.query;
 
     if (!code) {
       return res.status(400).json({ error: "Missing OAuth code" });
+    }
+
+    // Reject any callback whose `state` we didn't just sign. NOTE: this only
+    // accepts connects that started at our /auth/login — a marketplace-install
+    // or Monday-app re-auth (no prior signed state) would be rejected. That's
+    // correct for the single-tenant button-only pilot; revisit for multi-tenant.
+    if (!verifyOAuthState(state, oauthStateSecret)) {
+      return res.status(400).json({ error: "invalid_oauth_state" });
     }
 
     try {

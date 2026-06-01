@@ -1090,20 +1090,72 @@ button {
   display: grid;
   gap: 10px;
 }
+.results-list > li {
+  list-style: none;
+}
 .result-row {
+  border-radius: 16px;
+  background: rgba(246, 243, 237, 0.8);
+  border: 1px solid rgba(19, 33, 43, 0.08);
+}
+.result-row__summary {
+  cursor: pointer;
+  list-style: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
   padding: 14px 16px;
-  border-radius: 16px;
-  background: rgba(246, 243, 237, 0.8);
-  border: 1px solid rgba(19, 33, 43, 0.08);
+  user-select: none;
+}
+.result-row__summary::-webkit-details-marker {
+  display: none;
+}
+.result-row__summary::after {
+  content: "›";
+  color: #6a7b86;
+  font-size: 1.1rem;
+  transition: transform 0.15s ease;
+}
+.result-row[open] .result-row__summary::after {
+  transform: rotate(90deg);
 }
 .result-row__meta {
   color: #44545d;
   font-size: 0.9rem;
+  margin-left: auto;
+}
+.result-row__detail {
+  padding: 0 16px 14px;
+  border-top: 1px solid rgba(19, 33, 43, 0.08);
+  display: grid;
+  gap: 4px;
+}
+.result-row__detail p {
+  margin: 8px 0 0;
+}
+.result-row__detail a {
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+/* Plain-language post-scan summary (replaces the raw count strip) */
+.scan-summary {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(19, 33, 43, 0.08);
+}
+.scan-summary p {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.scan-summary__id {
+  display: block;
+  margin-top: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  color: #6a7b86;
 }
 .results-detail {
   border-top: 1px solid rgba(19, 33, 43, 0.08);

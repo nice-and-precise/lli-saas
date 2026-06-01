@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
 import MatchExplainabilityCard from "../components/MatchExplainabilityCard";
 import { getRequiredServiceBaseUrl, resolveServiceBaseUrl } from "../runtimeConfig";
@@ -168,6 +168,34 @@ function formatMatchedFields(fields = []) {
   return fields.join(", ");
 }
 
+// Plain-language labels for the broker-facing surfaces (delivery rows, hero chip).
+// The raw codes still flow to the backend; we only humanize what brokers read.
+const DELIVERY_STATUS_LABELS = {
+  created: "Delivered",
+  skipped_duplicate: "Already in your board",
+  failed: "Delivery failed",
+  pending: "Pending",
+};
+
+const TIER_LABELS = {
+  hot: "Hot lead",
+  warm: "Warm lead",
+  pending_review: "Needs review",
+  low_signal: "Low match",
+};
+
+function humanize(value) {
+  return value ? String(value).replace(/_/g, " ") : "—";
+}
+
+function humanizeDeliveryStatus(status) {
+  return DELIVERY_STATUS_LABELS[status] ?? humanize(status);
+}
+
+function humanizeTier(tier) {
+  return TIER_LABELS[tier] ?? humanize(tier);
+}
+
 function buildOwnerLink(lead) {
   return lead?.owner_profile_url ?? null;
 }
@@ -310,6 +338,12 @@ export default function DashboardPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [pipelineMetrics, setPipelineMetrics] = useState(null);
+  // Progressive-disclosure sections are uncontrolled <details> (native toggling),
+  // force-opened once via refs when there's something to act on — see the effect
+  // below. Refs (not controlled `open`) avoid a React setState in the toggle
+  // handler that could fire after unmount.
+  const readinessDetailsRef = useRef(null);
+  const setupDetailsRef = useRef(null);
 
   async function refreshDashboard(skipAutoProvision = false) {
     setLoading(true);
@@ -621,7 +655,6 @@ export default function DashboardPage() {
   const autoProvisioned = Boolean(status?.onboarding?.auto_provisioned_at);
   const deliveryCount = status?.deliveries?.length ?? 0;
   const latestDelivery = status?.latest_delivery;
-  const latestLeadSummary = latestDelivery?.summary ?? null;
   const confidentSuggestions = useMemo(
     () =>
       (validation?.suggestions ?? []).filter(
@@ -649,48 +682,62 @@ export default function DashboardPage() {
       new URLSearchParams(window.location.search).get("connected") === "1",
     [],
   );
+  // Decide the initial expanded/collapsed state of Setup + readiness ONCE, after
+  // the first fully-settled load (status + validation both present). Doing it once
+  // — rather than re-deriving each render — avoids the transient where status or
+  // validation is momentarily null (startTransition) and the section flickers open,
+  // and leaves the sections user-controlled afterward (manual toggles persist).
+  const disclosuresInitialized = useRef(false);
+  useEffect(() => {
+    if (disclosuresInitialized.current) return;
+    if (loading || !status || !validation) return;
+    disclosuresInitialized.current = true;
+    // Setup opens only when something is genuinely unfinished; readiness opens only
+    // when a scan is actually blocked (warnings alone stay summarized in the chip).
+    if (setupDetailsRef.current) {
+      setupDetailsRef.current.open = !mondayConnected || !status.board || scanBlocked;
+    }
+    if (readinessDetailsRef.current) {
+      readinessDetailsRef.current.open = scanBlocked;
+    }
+  }, [loading, status, validation, mondayConnected, scanBlocked]);
 
   return (
     <main className="page dashboard-page" aria-label="Obituary intelligence dashboard">
       <section className="panel hero hero-grid">
         <div>
-          <p className="eyebrow">lli-saas orchestration flow</p>
+          <p className="eyebrow">Obituary lead pipeline</p>
           <h1>Obituary intelligence cockpit.</h1>
           <p className="lede">
-            Pull owner records from the Monday <strong>Clients</strong> board, run the
-            obituary intelligence scan through <code>lead-engine</code>, and manage the
-            richer delivery mapping for obituary, heir, and match signals.
+            Find land-owner leads from recent Iowa obituaries and deliver them straight into
+            your Monday board — in one click.
+          </p>
+          <p className="conn-line">
+            <span className={`conn-pill ${mondayConnected ? "is-connected" : "is-disconnected"}`}>
+              {loading ? "Checking connection…" : mondayConnected ? "● Connected to Monday" : "○ Not connected"}
+            </span>
+            {mondayConnected && status?.board ? (
+              <span className="conn-dest">
+                Leads go to <strong>{selectedBoard}</strong>
+              </span>
+            ) : null}
           </p>
         </div>
         <div className="hero-metrics">
           <div className="metric-chip">
-            <span>Destination board</span>
-            <strong>{selectedBoard}</strong>
+            <span>Obituaries scanned</span>
+            <strong>{pipelineMetrics?.totals?.obituaries ?? "—"}</strong>
           </div>
           <div className="metric-chip">
-            <span>Deliveries</span>
+            <span>Leads delivered</span>
             <strong>{deliveryCount}</strong>
           </div>
           <div className="metric-chip">
-            <span>Latest</span>
-            <strong>{latestDelivery?.status ?? "awaiting first scan"}</strong>
+            <span>Latest activity</span>
+            <strong>{latestDelivery ? humanizeDeliveryStatus(latestDelivery.status) : "Awaiting first scan"}</strong>
           </div>
         </div>
       </section>
-
-      {nextStep ? (
-        <section
-          className="panel next-step-panel"
-          role="status"
-          aria-live="polite"
-          aria-label="What to do next"
-        >
-          <p className="next-step">
-            <span className="next-step__tag">Next step</span>
-            {nextStep}
-          </p>
-        </section>
-      ) : null}
 
       {justConnected ? (
         <section className="panel success-panel" role="status">
@@ -699,41 +746,9 @@ export default function DashboardPage() {
             {autoProvisioned && sourceBoard
               ? "We set everything up for you — detected your owner board, built your “Land Legacy Leads” board, and mapped the fields. Just run a scan."
               : autoProvisioned
-                ? "We built your “Land Legacy Leads” board and mapped the fields. We couldn’t auto-detect a landowner board — import a CSV below or pick one in “Owner source board.”"
-                : "Import your owners below, then run a scan."}
+                ? "We built your “Land Legacy Leads” board and mapped the fields. We couldn’t auto-detect a landowner board — import a CSV or pick one in Setup below."
+                : "Open Setup below to import your owners, then run a scan."}
           </p>
-        </section>
-      ) : null}
-
-      {mondayConnected && autoProvisioned ? (
-        <section className="panel" aria-label="Owner source board">
-          <h2>Owner source board</h2>
-          {sourceBoard ? (
-            <p className="lede">
-              Reading landowners from your <strong>{sourceBoard.name}</strong> board automatically — no
-              CSV needed. Wrong board? Pick another below.
-            </p>
-          ) : (
-            <p className="lede">
-              We couldn’t auto-detect a landowner board in your workspace. Use{" "}
-              <strong>Import your owners</strong> below to create one from a CSV, or pick a board here.
-            </p>
-          )}
-          <label>
-            Owner source
-            <select
-              aria-label="Owner source board"
-              value={sourceBoard?.id ?? ""}
-              onChange={(event) => handleSourceBoardSelect(event.target.value)}
-            >
-              <option value="">{sourceBoard ? "Keep current" : "Select a board"}</option>
-              {boards.map((board) => (
-                <option key={board.id} value={board.id}>
-                  {board.name}
-                </option>
-              ))}
-            </select>
-          </label>
         </section>
       ) : null}
 
@@ -766,65 +781,110 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      <section className="panel">
-        <h2>Import your owners</h2>
-        <p className="lede">
-          Upload a CSV of your landowners to create your Monday <strong>Clients</strong> board
-          automatically — no manual data entry. Use a header row with a <code>name</code> column
-          (plus optional <code>county</code> and <code>state</code> columns).
-        </p>
-        <form onSubmit={handleImportOwners} className="import-form">
-          <input type="file" name="ownersCsv" accept=".csv,text/csv" />
-          <button type="submit" disabled={importing}>
-            {importing ? "Importing…" : "Import owners → Clients board"}
-          </button>
-        </form>
-        {importResult ? (
-          <p className="import-result">
-            ✅ Created {importResult.owners_created} owner
-            {importResult.owners_created === 1 ? "" : "s"} on the “{importResult.board_name}” board.
+      {nextStep ? (
+        <section
+          className="panel next-step-panel"
+          role="status"
+          aria-live="polite"
+          aria-label="What to do next"
+        >
+          <p className="next-step">
+            <span className="next-step__tag">Next step</span>
+            {nextStep}
           </p>
-        ) : null}
-      </section>
-
-      {pipelineMetrics?.daily?.length ? (
-        <section className="panel">
-          <h2>Pipeline metrics</h2>
-          <p className="subtle">
-            {pipelineMetrics.totals?.obituaries ?? 0} obituaries scanned over{" "}
-            {pipelineMetrics.totals?.days_tracked ?? 0} days ·{" "}
-            {pipelineMetrics.totals?.leads_delivered ?? 0} leads delivered
-          </p>
-          <ul className="metrics-list">
-            {[...pipelineMetrics.daily]
-              .slice(-7)
-              .reverse()
-              .map((day) => (
-                <li key={day.date}>
-                  <strong>{day.date}</strong>: {day.obituaries} obituaries
-                  {day.kind === "backfill" ? " (est.)" : ""}
-                </li>
-              ))}
-          </ul>
         </section>
       ) : null}
 
-      <section className="grid dashboard-grid validation-grid">
-        <article className="panel validation-card">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Monday.com guardrail</p>
-              <h2>Pre-scan validator</h2>
+      {/* ---- PRIMARY ACTION: run a scan ---- */}
+      <section className="panel action-panel" aria-label="Run a scan">
+        <h2>Run an obituary scan</h2>
+        <p className="subtle action-help">
+          Scans the last {form.lookback_days} days of Iowa obituaries against your owners and
+          delivers matched leads to <strong>{selectedBoard}</strong>. The defaults work for
+          most runs — just press the button.
+        </p>
+        <form className="scan-form" onSubmit={handleRunScan}>
+          <button
+            type="submit"
+            className="primary-action-button"
+            disabled={runningScan || scanBlocked}
+          >
+            {runningScan
+              ? "Running scan..."
+              : scanBlocked
+                ? "Fix validator errors before running scan"
+                : "Run obituary scan"}
+          </button>
+          <details className="advanced-options">
+            <summary>Advanced options</summary>
+            <div className="advanced-options-grid">
+              <label>
+                Owner limit
+                <input
+                  type="number"
+                  min="1"
+                  max="10000"
+                  value={form.owner_limit}
+                  onChange={(event) => setForm((current) => ({ ...current, owner_limit: event.target.value }))}
+                />
+              </label>
+              <label>
+                Lookback days
+                <input
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={form.lookback_days}
+                  onChange={(event) => setForm((current) => ({ ...current, lookback_days: event.target.value }))}
+                />
+              </label>
+              <label>
+                Reference date
+                <input
+                  type="date"
+                  value={form.reference_date}
+                  onChange={(event) => setForm((current) => ({ ...current, reference_date: event.target.value }))}
+                />
+              </label>
+              <label>
+                Source ids
+                <input
+                  type="text"
+                  placeholder="kwbg_boone, kcim_carroll"
+                  value={form.source_ids}
+                  onChange={(event) => setForm((current) => ({ ...current, source_ids: event.target.value }))}
+                />
+              </label>
             </div>
-            <p className={`status ${validation?.ready ? "ready" : "offline"}`}>
-              {loading ? "Loading" : validation?.ready ? "Ready for scan" : "Needs review"}
-            </p>
+          </details>
+        </form>
+        {lastRunSummary ? (
+          <div className="result-strip">
+            <strong>{lastRunSummary.scan_id}</strong>
+            <span>{lastRunSummary.owner_count} owners scanned</span>
+            <span>{lastRunSummary.lead_count} leads found</span>
+            <span>{lastRunSummary.delivery_summary.created} delivered</span>
+            <span>{lastRunSummary.delivery_summary.failed} failed</span>
           </div>
+        ) : null}
+      </section>
+
+      {/* ---- READINESS: chip when clear, full validator when there's something to fix ---- */}
+      <details className="panel readiness-panel" ref={readinessDetailsRef}>
+        <summary className="readiness-summary">
+          <span className={`readiness-chip ${scanBlocked ? "warn" : "ok"}`}>
+            {loading ? "Checking setup…" : scanBlocked ? "Needs attention before scanning" : "✓ Ready to scan"}
+          </span>
+          <span className="readiness-counts">{formatIssueCount(validation?.summary)}</span>
+        </summary>
+        <div className="readiness-body">
+          <p className="eyebrow">Monday.com guardrail</p>
+          <h2>Pre-scan validator</h2>
 
           <div className="validation-summary-row">
             <div>
-              <strong>{formatIssueCount(validation?.summary)}</strong>
-              <span>{validation?.preview ? "Preview only" : "Live configuration"}</span>
+              <strong>{validation?.preview ? "Preview only" : "Live configuration"}</strong>
+              <span>configuration</span>
             </div>
             <div>
               <strong>{validation?.state?.mapping?.mapped_field_count ?? 0}</strong>
@@ -907,264 +967,274 @@ export default function DashboardPage() {
               </ul>
             </div>
           </div>
-        </article>
-      </section>
+        </div>
+      </details>
 
-      <section className="grid dashboard-grid">
-        <article className="panel status-card">
-          <h2>Connection status</h2>
-          <p className={`status ${status?.board ? "ready" : "offline"}`}>
-            {loading ? "Loading" : status?.board ? "Destination board connected" : "Destination board not selected"}
-          </p>
-          <p>Tenant: {status?.tenant_id ?? "pilot"}</p>
-          <p>Selected destination board: {selectedBoard}</p>
-          <p>Scan runs tracked: {status?.scan_runs?.length ?? 0}</p>
-        </article>
-
-        <article className="panel mapping-card">
-          <h2>Lead delivery mapping</h2>
-          <p className="status ready">{mapping?.mapping?.item_name_strategy ?? "Not configured"}</p>
-          <p>{mapping ? formatColumnSummary(mapping.mapping, lliFields) : "Select a destination board to persist mapping."}</p>
-        </article>
-
-        <article className="panel scan-card">
-          <h2>Run scan</h2>
-          <form className="auth-form scan-form" onSubmit={handleRunScan}>
-            <p className="subtle">
-              Scans the last {form.lookback_days} days of Iowa obituaries against your owners and
-              delivers matched leads to your board. The defaults work for most runs — just press the button.
-            </p>
-            <details className="advanced-options">
-              <summary>Advanced options</summary>
-              <label>
-                Owner limit
-                <input
-                  type="number"
-                  min="1"
-                  max="10000"
-                  value={form.owner_limit}
-                  onChange={(event) => setForm((current) => ({ ...current, owner_limit: event.target.value }))}
-                />
-              </label>
-              <label>
-                Lookback days
-                <input
-                  type="number"
-                  min="1"
-                  max="30"
-                  value={form.lookback_days}
-                  onChange={(event) => setForm((current) => ({ ...current, lookback_days: event.target.value }))}
-                />
-              </label>
-              <label>
-                Reference date
-                <input
-                  type="date"
-                  value={form.reference_date}
-                  onChange={(event) => setForm((current) => ({ ...current, reference_date: event.target.value }))}
-                />
-              </label>
-              <label>
-                Source ids
-                <input
-                  type="text"
-                  placeholder="kwbg_boone, kcim_carroll"
-                  value={form.source_ids}
-                  onChange={(event) => setForm((current) => ({ ...current, source_ids: event.target.value }))}
-                />
-              </label>
-            </details>
-            <button type="submit" disabled={runningScan || scanBlocked}>
-              {runningScan
-                ? "Running scan..."
-                : scanBlocked
-                  ? "Fix validator errors before running scan"
-                  : "Run obituary scan"}
-            </button>
-          </form>
-          <p className="subtle">
-            Each run pulls fresh owner data from Monday instead of scanning a persisted owner corpus.
-          </p>
-          {lastRunSummary ? (
-            <div className="result-strip">
-              <strong>{lastRunSummary.scan_id}</strong>
-              <span>{lastRunSummary.owner_count} owners fetched</span>
-              <span>{lastRunSummary.lead_count} leads generated</span>
-              <span>{lastRunSummary.delivery_summary.created} delivered</span>
-              <span>{lastRunSummary.delivery_summary.failed} failed</span>
-            </div>
-          ) : null}
-        </article>
-      </section>
-
-      <section className="grid dashboard-grid">
-        <article className="panel">
-          <h2>Destination board</h2>
-          <form className="auth-form" onSubmit={handleBoardSelect}>
-            <label>
-              Choose Monday board
-              <select value={selectedBoardId} onChange={(event) => setSelectedBoardId(event.target.value)}>
-                <option value="">Select a board</option>
-                {boards.map((board) => (
-                  <option key={board.id} value={board.id}>
-                    {board.name}
-                  </option>
+      {/* ---- LATEST RESULTS: the payoff ---- */}
+      <section className="panel results-panel" aria-label="Latest results">
+        <h2>Latest results</h2>
+        {deliveryCount > 0 || lastRunSummary ? (
+          <>
+            {deliveryCount > 0 ? (
+              <ul className="results-list">
+                {(status?.deliveries ?? []).slice(0, 5).map((delivery) => (
+                  <li key={delivery.id} className="result-row">
+                    <strong>{delivery.item_name}</strong>
+                    <span className="result-row__meta">
+                      {humanizeTier(delivery.summary?.tier)} · {humanizeDeliveryStatus(delivery.status)}
+                    </span>
+                  </li>
                 ))}
-              </select>
-            </label>
-            <button type="submit" disabled={savingBoard || !selectedBoardId}>
-              {savingBoard ? "Saving board..." : "Save board"}
-            </button>
-          </form>
-        </article>
-
-        <article className="panel mapping-editor-card mapping-editor-card--full">
-          <div className="section-heading">
-            <div>
-              <h2>Configurable owner field mapping</h2>
-              <p className="subtle mapping-editor-subtitle">
-                Match the broker&apos;s CRM fields to the LLI owner-data contract with descriptions and examples so onboarding stays repeatable.
-              </p>
-            </div>
-            {lastAppliedCorrectionDraft ? (
-              <button type="button" className="secondary-button" onClick={handleUndoCorrections}>
-                Revert auto-fixes
-              </button>
+              </ul>
             ) : null}
-          </div>
-          <form className="auth-form mapping-form" onSubmit={handleMappingSave}>
-            <label>
-              Item name strategy
-              <select
-                value={mappingDraft.item_name_strategy}
-                onChange={(event) =>
-                  setMappingDraft((current) => ({ ...current, item_name_strategy: event.target.value }))
-                }
-              >
-                {DEFAULT_ITEM_NAME_STRATEGIES.map((strategy) => (
-                  <option key={strategy} value={strategy}>
-                    {strategy}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="mapping-catalog-layout">
-              <section className="mapping-catalog-panel crm-catalog-panel">
-                <div className="mapping-catalog-header">
-                  <h3>Available CRM fields</h3>
-                  <span>{crmFields.length} found</span>
+            {lastRunSummary ? (
+              <details className="results-detail" open>
+                <summary>Latest scan match detail</summary>
+                <div className="results-detail-body">
+                  <LeadConfidenceCard lead={latestLead} />
+                  <MatchExplainabilityCard lead={latestLead} />
                 </div>
-                <ul className="crm-field-list">
-                  {crmFields.length > 0 ? (
-                    crmFields.map((field) => (
-                      <li key={field.id} className="crm-field-card">
-                        <div className="crm-field-card__row">
-                          <strong>{field.label}</strong>
-                          <span className="pill">{field.type}</span>
-                        </div>
-                        <p className="crm-field-id">{field.id}</p>
-                        <p>{field.description}</p>
-                        {field.example ? <p className="crm-field-example">Example: {field.example}</p> : null}
-                      </li>
-                    ))
-                  ) : (
-                    <li className="crm-field-card empty-state">Select a destination board to load CRM fields.</li>
-                  )}
-                </ul>
-              </section>
+              </details>
+            ) : null}
+          </>
+        ) : (
+          <p className="subtle">No leads delivered yet — run your first scan above to see matches here.</p>
+        )}
+      </section>
 
-              <section className="mapping-catalog-panel lli-catalog-panel">
-                <div className="mapping-catalog-header">
-                  <h3>LLI required owner fields</h3>
-                  <span>{lliFields.length} configurable</span>
-                </div>
-                <div className="mapping-grid mapping-grid-rich">
-                  {lliFields.map((field) => (
-                    <MappingFieldCard
-                      key={field.key}
-                      field={field}
-                      value={mappingDraft.columns[field.key] ?? ""}
-                      crmFields={crmFields}
-                      onChange={(value) =>
-                        setMappingDraft((current) => ({
-                          ...current,
-                          columns: {
-                            ...current.columns,
-                            [field.key]: value,
-                          },
-                        }))
-                      }
-                    />
+      {/* ---- SETUP & CONNECTIONS (set-up-once; collapsed when ready) ---- */}
+      <details className="panel disclosure" ref={setupDetailsRef}>
+        <summary className="disclosure-summary">
+          <span className="disclosure-title">Setup &amp; connections</span>
+          <span className="disclosure-hint">
+            {mondayConnected && autoProvisioned && !scanBlocked
+              ? "Already set up for you — open to change boards or field mapping"
+              : "Finish connecting Monday and choosing where leads go"}
+          </span>
+        </summary>
+        <div className="disclosure-body">
+          {mondayConnected && autoProvisioned ? (
+            <section className="setup-item" aria-label="Owner source board">
+              <h3>Where your owners come from</h3>
+              {sourceBoard ? (
+                <p className="subtle">
+                  Reading landowners from your <strong>{sourceBoard.name}</strong> board automatically —
+                  no CSV needed. Wrong board? Pick another below.
+                </p>
+              ) : (
+                <p className="subtle">
+                  We couldn’t auto-detect a landowner board in your workspace. Use{" "}
+                  <strong>Import your owners</strong> below to create one from a CSV, or pick a board here.
+                </p>
+              )}
+              <label>
+                Owner source
+                <select
+                  aria-label="Owner source board"
+                  value={sourceBoard?.id ?? ""}
+                  onChange={(event) => handleSourceBoardSelect(event.target.value)}
+                >
+                  <option value="">{sourceBoard ? "Keep current" : "Select a board"}</option>
+                  {boards.map((board) => (
+                    <option key={board.id} value={board.id}>
+                      {board.name}
+                    </option>
                   ))}
-                </div>
-              </section>
-            </div>
-            <button type="submit" disabled={savingMapping}>
-              {savingMapping ? "Saving mapping..." : "Save mapping"}
-            </button>
-          </form>
-        </article>
-      </section>
+                </select>
+              </label>
+            </section>
+          ) : null}
 
-      <section className="grid dashboard-grid">
-        <article className="panel lead-card">
-          <h2>Recent delivery</h2>
-          {latestDelivery ? (
-            <>
-              <p className="lead-title">{latestDelivery.item_name}</p>
-              <p>Status: {latestDelivery.status}</p>
-              <p>Scan: {latestDelivery.scan_id}</p>
-              {latestLeadSummary ? (
-                <>
-                  <p>Tier: {latestLeadSummary.tier ?? "n/a"}</p>
-                  <p>Match score: {latestLeadSummary.match_score ?? "n/a"}</p>
-                  <p>Heirs: {latestLeadSummary.heir_count ?? 0}</p>
-                </>
+          <section className="setup-item">
+            <h3>Import your owners</h3>
+            <p className="subtle">
+              Upload a CSV of your landowners to create your Monday <strong>Clients</strong> board
+              automatically — no manual data entry. Use a header row with a <code>name</code> column
+              (plus optional <code>county</code> and <code>state</code> columns).
+            </p>
+            <form onSubmit={handleImportOwners} className="import-form">
+              <input type="file" name="ownersCsv" accept=".csv,text/csv" />
+              <button type="submit" disabled={importing}>
+                {importing ? "Importing…" : "Import owners → Clients board"}
+              </button>
+            </form>
+            {importResult ? (
+              <p className="import-result">
+                ✅ Created {importResult.owners_created} owner
+                {importResult.owners_created === 1 ? "" : "s"} on the “{importResult.board_name}” board.
+              </p>
+            ) : null}
+          </section>
+
+          <section className="setup-item">
+            <h3>Where leads go</h3>
+            <form className="auth-form" onSubmit={handleBoardSelect}>
+              <label>
+                Choose Monday board
+                <select value={selectedBoardId} onChange={(event) => setSelectedBoardId(event.target.value)}>
+                  <option value="">Select a board</option>
+                  {boards.map((board) => (
+                    <option key={board.id} value={board.id}>
+                      {board.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" disabled={savingBoard || !selectedBoardId}>
+                {savingBoard ? "Saving board..." : "Save board"}
+              </button>
+            </form>
+          </section>
+
+          <article className="setup-item mapping-editor-card">
+            <div className="section-heading">
+              <div>
+                <h3>Field mapping</h3>
+                <p className="subtle mapping-editor-subtitle">
+                  Match your Monday board columns to the lead fields we deliver. Auto-mapped for you on
+                  setup — adjust only if a field landed in the wrong column.
+                </p>
+                {mapping ? (
+                  <p className="subtle mapping-summary-line">{formatColumnSummary(mapping.mapping, lliFields)}</p>
+                ) : null}
+              </div>
+              {lastAppliedCorrectionDraft ? (
+                <button type="button" className="secondary-button" onClick={handleUndoCorrections}>
+                  Revert auto-fixes
+                </button>
               ) : null}
-            </>
-          ) : (
-            <p>No delivery records yet.</p>
-          )}
-        </article>
+            </div>
+            <form className="auth-form mapping-form" onSubmit={handleMappingSave}>
+              <label>
+                Item name strategy
+                <select
+                  value={mappingDraft.item_name_strategy}
+                  onChange={(event) =>
+                    setMappingDraft((current) => ({ ...current, item_name_strategy: event.target.value }))
+                  }
+                >
+                  {DEFAULT_ITEM_NAME_STRATEGIES.map((strategy) => (
+                    <option key={strategy} value={strategy}>
+                      {strategy}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-        <article className="panel history-card">
-          <h2>Delivery history</h2>
-          <ul className="activity-list">
-            {(status?.deliveries ?? []).slice(0, 4).map((delivery) => (
-              <li key={delivery.id}>
-                <strong>{delivery.item_name}</strong>
-                <span>{delivery.status}</span>
-                <span>{delivery.summary?.tier ?? "tier unavailable"}</span>
-              </li>
-            ))}
-          </ul>
-        </article>
+              <div className="mapping-catalog-layout">
+                <section className="mapping-catalog-panel crm-catalog-panel">
+                  <div className="mapping-catalog-header">
+                    <h3>Available CRM fields</h3>
+                    <span>{crmFields.length} found</span>
+                  </div>
+                  <ul className="crm-field-list">
+                    {crmFields.length > 0 ? (
+                      crmFields.map((field) => (
+                        <li key={field.id} className="crm-field-card">
+                          <div className="crm-field-card__row">
+                            <strong>{field.label}</strong>
+                            <span className="pill">{field.type}</span>
+                          </div>
+                          <p className="crm-field-id">{field.id}</p>
+                          <p>{field.description}</p>
+                          {field.example ? <p className="crm-field-example">Example: {field.example}</p> : null}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="crm-field-card empty-state">Select a destination board to load CRM fields.</li>
+                    )}
+                  </ul>
+                </section>
 
-        <article className="panel history-card">
-          <h2>Scan runs</h2>
-          <ul className="activity-list">
-            {(status?.scan_runs ?? []).slice(0, 4).map((scanRun) => (
-              <li key={scanRun.scan_id}>
-                <strong>{scanRun.scan_id}</strong>
-                <span>{scanRun.last_delivery_status}</span>
-              </li>
-            ))}
-          </ul>
-        </article>
-      </section>
+                <section className="mapping-catalog-panel lli-catalog-panel">
+                  <div className="mapping-catalog-header">
+                    <h3>LLI required owner fields</h3>
+                    <span>{lliFields.length} configurable</span>
+                  </div>
+                  <div className="mapping-grid mapping-grid-rich">
+                    {lliFields.map((field) => (
+                      <MappingFieldCard
+                        key={field.key}
+                        field={field}
+                        value={mappingDraft.columns[field.key] ?? ""}
+                        crmFields={crmFields}
+                        onChange={(value) =>
+                          setMappingDraft((current) => ({
+                            ...current,
+                            columns: {
+                              ...current.columns,
+                              [field.key]: value,
+                            },
+                          }))
+                        }
+                      />
+                    ))}
+                  </div>
+                </section>
+              </div>
+              <button type="submit" disabled={savingMapping}>
+                {savingMapping ? "Saving mapping..." : "Save mapping"}
+              </button>
+            </form>
+          </article>
+        </div>
+      </details>
 
-      <section className="grid dashboard-grid">
-        <article className="panel history-card">
-          <h2>Latest scan confidence</h2>
-          <LeadConfidenceCard lead={latestLead} />
-        </article>
+      {/* ---- ACTIVITY & PIPELINE (read-only history) ---- */}
+      <details className="panel disclosure">
+        <summary className="disclosure-summary">
+          <span className="disclosure-title">Activity &amp; pipeline</span>
+          <span className="disclosure-hint">Scan history, deliveries, and obituary volume</span>
+        </summary>
+        <div className="disclosure-body">
+          {pipelineMetrics?.daily?.length ? (
+            <section className="setup-item">
+              <h3>Pipeline metrics</h3>
+              <p className="subtle">
+                {pipelineMetrics.totals?.obituaries ?? 0} obituaries scanned over{" "}
+                {pipelineMetrics.totals?.days_tracked ?? 0} days ·{" "}
+                {pipelineMetrics.totals?.leads_delivered ?? 0} leads delivered
+              </p>
+              <ul className="metrics-list">
+                {[...pipelineMetrics.daily]
+                  .slice(-7)
+                  .reverse()
+                  .map((day) => (
+                    <li key={day.date}>
+                      <strong>{day.date}</strong>: {day.obituaries} obituaries
+                      {day.kind === "backfill" ? " (est.)" : ""}
+                    </li>
+                  ))}
+              </ul>
+            </section>
+          ) : null}
 
-        <article className="panel explainability-card-panel explainability-card-panel--full">
-          <h2>Match Explainability</h2>
-          <MatchExplainabilityCard lead={latestLead} />
-        </article>
-      </section>
+          <section className="setup-item">
+            <h3>Delivery history</h3>
+            <ul className="activity-list">
+              {(status?.deliveries ?? []).slice(0, 4).map((delivery) => (
+                <li key={delivery.id}>
+                  <strong>{delivery.item_name}</strong>
+                  <span>{humanizeDeliveryStatus(delivery.status)}</span>
+                  <span>{humanizeTier(delivery.summary?.tier)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="setup-item">
+            <h3>Scan runs</h3>
+            <ul className="activity-list">
+              {(status?.scan_runs ?? []).slice(0, 4).map((scanRun) => (
+                <li key={scanRun.scan_id}>
+                  <strong>{scanRun.scan_id}</strong>
+                  <span>{humanizeDeliveryStatus(scanRun.last_delivery_status)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </details>
     </main>
   );
 }

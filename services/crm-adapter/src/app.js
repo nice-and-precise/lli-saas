@@ -13,7 +13,16 @@ const {
 } = require("./ownerRecord");
 const { createProfilingReport } = require("./profiler");
 const { createDefaultMapping, DEFAULT_TENANT_ID, createTokenStore } = require("./tokenStore");
-const { resolveOAuthStateSecret, signOAuthState, verifyOAuthState } = require("./oauthState");
+const {
+  OAUTH_STATE_MAX_AGE_MS,
+  OAUTH_NONCE_COOKIE,
+  resolveOAuthStateSecret,
+  signOAuthState,
+  verifyOAuthState,
+  oauthStateNonce,
+  oauthStateBindingMatches,
+  readCookie,
+} = require("./oauthState");
 const {
   FIELD_METADATA,
   buildValidationResponse,
@@ -646,10 +655,18 @@ function createApp(options = {}) {
   });
 
   app.get("/auth/login", (req, res) => {
-    // CSRF protection: a signed, self-verifying `state` (no cookie) echoed to
-    // Monday and re-verified on the callback so a forged code can't overwrite
-    // the stored token.
+    // CSRF protection: a signed, freshness-bounded `state` echoed to Monday, plus
+    // a session-binding nonce cookie. The callback requires BOTH the valid state
+    // and the matching cookie, so a forged code from an attacker-minted state
+    // (login-CSRF) can't overwrite the stored token.
     const state = signOAuthState(oauthStateSecret);
+    res.cookie(OAUTH_NONCE_COOKIE, oauthStateNonce(state), {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax", // survives Monday's top-level GET redirect back to /auth/callback
+      maxAge: OAUTH_STATE_MAX_AGE_MS,
+      path: "/auth",
+    });
     res.redirect(mondayClient.getAuthorizationUrl(state));
   });
 
@@ -660,16 +677,26 @@ function createApp(options = {}) {
       return res.status(400).json({ error: "Missing OAuth code" });
     }
 
-    // Reject any callback whose `state` we didn't just sign. NOTE: this only
-    // accepts connects that started at our /auth/login — a marketplace-install
-    // or Monday-app re-auth (no prior signed state) would be rejected. That's
-    // correct for the single-tenant button-only pilot; revisit for multi-tenant.
-    if (!verifyOAuthState(state, oauthStateSecret)) {
+    // One-time nonce: clear the binding cookie regardless of outcome.
+    const cookieNonce = readCookie(req.headers.cookie, OAUTH_NONCE_COOKIE);
+    res.clearCookie(OAUTH_NONCE_COOKIE, { path: "/auth" });
+
+    // Reject unless the state is one we signed (integrity + freshness) AND its
+    // nonce matches the cookie this browser carried from /auth/login (session
+    // binding). NOTE: only accepts connects that started at our /auth/login — a
+    // marketplace-install or Monday-app re-auth (no prior signed state/cookie)
+    // would be rejected. Correct for the single-tenant button-only pilot.
+    if (!verifyOAuthState(state, oauthStateSecret) || !oauthStateBindingMatches(state, cookieNonce)) {
       return res.status(400).json({ error: "invalid_oauth_state" });
     }
 
     try {
       const tokenPayload = await mondayClient.exchangeCodeForToken(code);
+      if (!tokenPayload || typeof tokenPayload.access_token !== "string" || tokenPayload.access_token.length === 0) {
+        // A 2xx response without a usable token (e.g. an error body at HTTP 200)
+        // must not be persisted as a successful connection.
+        return res.status(400).json({ error: "oauth_exchange_failed" });
+      }
       await tokenStore.save("monday_access_token", tokenPayload.access_token);
       if (typeof tokenStore.saveState === "function") {
         await tokenStore.saveState({

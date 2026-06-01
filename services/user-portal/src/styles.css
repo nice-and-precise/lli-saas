@@ -928,3 +928,255 @@ button {
   margin-top: 0.5rem;
   color: #16a34a;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Streamlined dashboard: connection pill, primary action, readiness, */
+/*  progressive-disclosure sections (Setup / Activity)                 */
+/* ------------------------------------------------------------------ */
+
+/* Connection pill in the hero */
+.conn-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 14px 0 0;
+}
+.conn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.conn-pill.is-connected {
+  background: rgba(28, 124, 84, 0.12);
+  border-color: rgba(28, 124, 84, 0.2);
+  color: #1c7c54;
+}
+.conn-pill.is-disconnected {
+  background: rgba(166, 64, 50, 0.1);
+  border-color: rgba(166, 64, 50, 0.18);
+  color: #a64032;
+}
+.conn-dest {
+  font-size: 0.9rem;
+  color: #44545d;
+}
+
+/* Primary action — the visual hero of the page */
+.action-panel {
+  border: 1px solid rgba(13, 92, 99, 0.18);
+  background: linear-gradient(180deg, rgba(13, 92, 99, 0.06), rgba(255, 255, 255, 0.82));
+}
+.action-panel h2 {
+  margin-top: 0;
+}
+.action-help {
+  max-width: 46rem;
+}
+.primary-action-button {
+  border: none;
+  border-radius: 999px;
+  background: #0d5c63;
+  color: #fff;
+  padding: 18px 28px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  box-shadow: 0 10px 24px rgba(13, 92, 99, 0.22);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.primary-action-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(13, 92, 99, 0.28);
+}
+.primary-action-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.scan-form {
+  display: grid;
+  gap: 14px;
+}
+.advanced-options-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-top: 6px;
+}
+.advanced-options-grid label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+.advanced-options-grid input {
+  border: 1px solid rgba(19, 33, 43, 0.14);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 1rem;
+  width: 100%;
+}
+
+/* Readiness: compact chip summary that expands to the full validator */
+.readiness-panel {
+  padding: 0;
+}
+.readiness-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+  user-select: none;
+}
+.readiness-summary::-webkit-details-marker {
+  display: none;
+}
+.readiness-summary::after {
+  content: "›";
+  margin-left: auto;
+  color: #6a7b86;
+  font-size: 1.2rem;
+  transition: transform 0.15s ease;
+}
+.readiness-panel[open] .readiness-summary::after {
+  transform: rotate(90deg);
+}
+.readiness-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.92rem;
+}
+.readiness-chip.ok {
+  background: rgba(28, 124, 84, 0.12);
+  color: #1c7c54;
+}
+.readiness-chip.warn {
+  background: rgba(184, 128, 27, 0.14);
+  color: #b8801b;
+}
+.readiness-counts {
+  color: #44545d;
+  font-size: 0.9rem;
+}
+.readiness-body {
+  padding: 0 24px 24px;
+  border-top: 1px solid rgba(19, 33, 43, 0.08);
+}
+.readiness-body h2 {
+  margin: 14px 0 0;
+}
+
+/* Latest results — the payoff list */
+.results-panel h2 {
+  margin-top: 0;
+}
+.results-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(246, 243, 237, 0.8);
+  border: 1px solid rgba(19, 33, 43, 0.08);
+}
+.result-row__meta {
+  color: #44545d;
+  font-size: 0.9rem;
+}
+.results-detail {
+  border-top: 1px solid rgba(19, 33, 43, 0.08);
+  padding-top: 14px;
+}
+.results-detail > summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.results-detail-body {
+  display: grid;
+  gap: 18px;
+}
+
+/* Progressive-disclosure sections (Setup / Activity) */
+.disclosure {
+  padding: 0;
+}
+.disclosure-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 20px 24px;
+  user-select: none;
+}
+.disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure-summary::after {
+  content: "›";
+  margin-left: auto;
+  color: #6a7b86;
+  font-size: 1.3rem;
+  transition: transform 0.15s ease;
+}
+.disclosure[open] .disclosure-summary::after {
+  transform: rotate(90deg);
+}
+.disclosure-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.disclosure-hint {
+  color: #44545d;
+  font-size: 0.9rem;
+}
+.disclosure-body {
+  padding: 0 24px 24px;
+  border-top: 1px solid rgba(19, 33, 43, 0.08);
+  display: grid;
+  gap: 24px;
+}
+.setup-item {
+  padding-top: 18px;
+  border-top: 1px solid rgba(19, 33, 43, 0.06);
+}
+.disclosure-body > .setup-item:first-child {
+  border-top: none;
+  padding-top: 4px;
+}
+.setup-item h3 {
+  margin: 0 0 10px;
+}
+.mapping-summary-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  word-break: break-word;
+}
+/* The mapping editor inside Setup no longer spans a grid; it's full-width already. */
+.disclosure-body .mapping-editor-card {
+  padding: 0;
+}

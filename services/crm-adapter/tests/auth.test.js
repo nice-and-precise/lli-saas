@@ -4,12 +4,19 @@ const path = require("path");
 
 const { buildTransactionId, createApp, SOURCE_OWNER_BOARD_NAME } = require("../src/app");
 const { FileTokenStore } = require("../src/tokenStore");
-const { resolveOAuthStateSecret, signOAuthState } = require("../src/oauthState");
+const {
+  OAUTH_NONCE_COOKIE,
+  resolveOAuthStateSecret,
+  signOAuthState,
+  oauthStateNonce,
+} = require("../src/oauthState");
 
 // A `state` valid for an app created without an explicit clientSecret (falls back
-// to the dev secret), mirroring what /auth/login signs and Monday echoes back.
+// to the dev secret), mirroring what /auth/login signs and Monday echoes back,
+// plus the binding cookie /auth/login would have set for it.
 function validOAuthState() {
-  return signOAuthState(resolveOAuthStateSecret());
+  const state = signOAuthState(resolveOAuthStateSecret());
+  return { state, cookie: `${OAUTH_NONCE_COOKIE}=${oauthStateNonce(state)}` };
 }
 
 function buildLead(overrides = {}) {
@@ -112,8 +119,10 @@ describe("crm-adapter routes", () => {
     };
     const app = createApp({ mondayClient, tokenStore });
 
-    const state = validOAuthState();
-    const response = await request(app).get(`/auth/callback?code=abc123&state=${state}`);
+    const { state, cookie } = validOAuthState();
+    const response = await request(app)
+      .get(`/auth/callback?code=abc123&state=${state}`)
+      .set("Cookie", cookie);
 
     // Callback now redirects the operator back to the portal instead of JSON.
     expect(response.statusCode).toBe(302);
@@ -129,21 +138,34 @@ describe("crm-adapter routes", () => {
     };
     const tokenStore = { save: vi.fn() };
     const app = createApp({ mondayClient, tokenStore });
+    const { state, cookie } = validOAuthState();
 
-    const noState = await request(app).get("/auth/callback?code=abc123");
+    const noState = await request(app).get("/auth/callback?code=abc123").set("Cookie", cookie);
     expect(noState.statusCode).toBe(400);
     expect(noState.body).toEqual({ error: "invalid_oauth_state" });
 
-    const forged = await request(app).get("/auth/callback?code=abc123&state=not.a.validsig");
+    const forged = await request(app)
+      .get("/auth/callback?code=abc123&state=not.a.validsig")
+      .set("Cookie", cookie);
     expect(forged.statusCode).toBe(400);
-    expect(forged.body).toEqual({ error: "invalid_oauth_state" });
 
-    // A forged callback must never reach the token exchange or persist a token.
+    // Valid signed state but NO binding cookie → login-CSRF attempt → rejected.
+    const noCookie = await request(app).get(`/auth/callback?code=abc123&state=${state}`);
+    expect(noCookie.statusCode).toBe(400);
+    expect(noCookie.body).toEqual({ error: "invalid_oauth_state" });
+
+    // Valid signed state but a DIFFERENT browser's cookie nonce → rejected.
+    const mismatched = await request(app)
+      .get(`/auth/callback?code=abc123&state=${state}`)
+      .set("Cookie", `${OAUTH_NONCE_COOKIE}=someone-elses-nonce`);
+    expect(mismatched.statusCode).toBe(400);
+
+    // None of these may reach the token exchange or persist a token.
     expect(mondayClient.exchangeCodeForToken).not.toHaveBeenCalled();
     expect(tokenStore.save).not.toHaveBeenCalled();
   });
 
-  it("issues a signed, self-verifying state on /auth/login", async () => {
+  it("issues a signed state and a binding nonce cookie on /auth/login", async () => {
     const mondayClient = {
       getAuthorizationUrl: vi.fn((state) => `https://auth.monday.com/oauth2/authorize?state=${state}`),
     };
@@ -156,6 +178,10 @@ describe("crm-adapter routes", () => {
     // nonce.timestamp.hmac — three parts, not the old static placeholder.
     expect(signedState.split(".")).toHaveLength(3);
     expect(signedState).not.toBe("lli-saas-state");
+    // Sets an HttpOnly binding cookie whose value is the state's nonce.
+    const setCookie = response.headers["set-cookie"].join(";");
+    expect(setCookie).toContain(`${OAUTH_NONCE_COOKIE}=${oauthStateNonce(signedState)}`);
+    expect(setCookie).toMatch(/HttpOnly/i);
   });
 
   it("lists boards using the persisted OAuth token", async () => {

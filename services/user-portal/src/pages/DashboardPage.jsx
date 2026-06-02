@@ -196,12 +196,71 @@ function humanizeTier(tier) {
   return TIER_LABELS[tier] ?? humanize(tier);
 }
 
+function formatCount(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toLocaleString("en-US") : "—";
+}
+
+// Compact relative time ("just now", "3 hours ago", "2 days ago"). `now` is
+// injectable so the formatting is deterministically testable.
+export function formatRelativeTime(iso, now = Date.now()) {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return null;
+  const minutes = Math.floor((now - then) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const months = Math.floor(days / 30);
+  return `${months} month${months === 1 ? "" : "s"} ago`;
+}
+
+// Plain-language summary of a completed scan, written so the common all-duplicate
+// case ("nothing new happened") is unambiguous instead of a row of raw counts.
+export function buildScanSummary(summary) {
+  if (!summary) return "";
+  const owners = summary.owner_count ?? 0;
+  const found = summary.lead_count ?? 0;
+  const created = summary.delivery_summary?.created ?? 0;
+  const failed = summary.delivery_summary?.failed ?? 0;
+  const parts = [
+    `Scanned recent Iowa obituaries against your ${owners} owner${owners === 1 ? "" : "s"} — found ${found} match${found === 1 ? "" : "es"}.`,
+  ];
+  if (found === 0) {
+    parts.push("No new leads this run.");
+  } else if (created > 0) {
+    parts.push(`Delivered ${created} new lead${created === 1 ? "" : "s"} to your board.`);
+  } else {
+    parts.push("All matches were already in your board — no new leads this run.");
+  }
+  if (failed > 0) {
+    parts.push(`${failed} failed to deliver.`);
+  }
+  return parts.join(" ");
+}
+
+// Obituary URLs come from scraped feeds (untrusted), so only render them into an
+// href when the scheme is http(s) — blocks a javascript:/data: URI riding in as
+// a clickable link (XSS).
+function safeHttpUrl(url) {
+  return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+}
+
+// Owner profile links use the app's own lli: scheme; allow that plus http(s),
+// still blocking dangerous schemes.
+function safeOwnerUrl(url) {
+  return typeof url === "string" && /^(https?:\/\/|lli:)/i.test(url) ? url : null;
+}
+
 function buildOwnerLink(lead) {
-  return lead?.owner_profile_url ?? null;
+  return safeOwnerUrl(lead?.owner_profile_url ?? null);
 }
 
 function buildObituaryLink(lead) {
-  return lead?.obituary_raw_url ?? lead?.obituary?.url ?? null;
+  return safeHttpUrl(lead?.obituary_raw_url ?? lead?.obituary?.url ?? null);
 }
 
 function LeadConfidenceCard({ lead }) {
@@ -655,6 +714,7 @@ export default function DashboardPage() {
   const autoProvisioned = Boolean(status?.onboarding?.auto_provisioned_at);
   const deliveryCount = status?.deliveries?.length ?? 0;
   const latestDelivery = status?.latest_delivery;
+  const lastScanAt = status?.scan_runs?.[0]?.last_delivery_at ?? latestDelivery?.delivered_at ?? null;
   const confidentSuggestions = useMemo(
     () =>
       (validation?.suggestions ?? []).filter(
@@ -726,15 +786,15 @@ export default function DashboardPage() {
         <div className="hero-metrics">
           <div className="metric-chip">
             <span>Obituaries scanned</span>
-            <strong>{pipelineMetrics?.totals?.obituaries ?? "—"}</strong>
+            <strong>{pipelineMetrics?.totals?.obituaries != null ? formatCount(pipelineMetrics.totals.obituaries) : "—"}</strong>
           </div>
           <div className="metric-chip">
             <span>Leads delivered</span>
-            <strong>{deliveryCount}</strong>
+            <strong>{formatCount(deliveryCount)}</strong>
           </div>
           <div className="metric-chip">
-            <span>Latest activity</span>
-            <strong>{latestDelivery ? humanizeDeliveryStatus(latestDelivery.status) : "Awaiting first scan"}</strong>
+            <span>Last scan</span>
+            <strong>{lastScanAt ? formatRelativeTime(lastScanAt) ?? "—" : "No scans yet"}</strong>
           </div>
         </div>
       </section>
@@ -859,12 +919,9 @@ export default function DashboardPage() {
           </details>
         </form>
         {lastRunSummary ? (
-          <div className="result-strip">
-            <strong>{lastRunSummary.scan_id}</strong>
-            <span>{lastRunSummary.owner_count} owners scanned</span>
-            <span>{lastRunSummary.lead_count} leads found</span>
-            <span>{lastRunSummary.delivery_summary.created} delivered</span>
-            <span>{lastRunSummary.delivery_summary.failed} failed</span>
+          <div className="scan-summary" role="status">
+            <p>{buildScanSummary(lastRunSummary)}</p>
+            <span className="scan-summary__id">Scan {lastRunSummary.scan_id}</span>
           </div>
         ) : null}
       </section>
@@ -977,14 +1034,35 @@ export default function DashboardPage() {
           <>
             {deliveryCount > 0 ? (
               <ul className="results-list">
-                {(status?.deliveries ?? []).slice(0, 5).map((delivery) => (
-                  <li key={delivery.id} className="result-row">
-                    <strong>{delivery.item_name}</strong>
-                    <span className="result-row__meta">
-                      {humanizeTier(delivery.summary?.tier)} · {humanizeDeliveryStatus(delivery.status)}
-                    </span>
-                  </li>
-                ))}
+                {(status?.deliveries ?? []).slice(0, 5).map((delivery) => {
+                  const summary = delivery.summary ?? {};
+                  const obituaryUrl = safeHttpUrl(delivery.obituary_url ?? summary.obituary_url ?? null);
+                  const score = summary.match_score;
+                  return (
+                    <li key={delivery.id}>
+                      <details className="result-row">
+                        <summary className="result-row__summary">
+                          <strong>{delivery.item_name}</strong>
+                          <span className="result-row__meta">
+                            {score != null ? `${Number(score).toFixed(0)}% · ` : ""}
+                            {humanizeTier(summary.tier)} · {humanizeDeliveryStatus(delivery.status)}
+                          </span>
+                        </summary>
+                        <div className="result-row__detail">
+                          {summary.owner_name ? <p>Owner: {summary.owner_name}</p> : null}
+                          <p>Match score: {score != null ? `${Number(score).toFixed(1)}%` : "—"}</p>
+                          <p>Heirs identified: {summary.heir_count ?? 0}</p>
+                          <p>Status: {humanizeDeliveryStatus(delivery.status)}</p>
+                          {obituaryUrl ? (
+                            <a href={obituaryUrl} target="_blank" rel="noreferrer">
+                              View obituary
+                            </a>
+                          ) : null}
+                        </div>
+                      </details>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
             {lastRunSummary ? (

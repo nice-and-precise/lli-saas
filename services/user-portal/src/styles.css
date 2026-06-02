@@ -1232,3 +1232,148 @@ button {
 .disclosure-body .mapping-editor-card {
   padding: 0;
 }
+
+/* ------------------------------------------------------------------ */
+/*  First-run onboarding: welcome screen + setup checklist             */
+/* ------------------------------------------------------------------ */
+
+.welcome-page {
+  max-width: 920px;
+  margin: 0 auto;
+}
+.welcome-panel {
+  border-color: rgba(13, 92, 99, 0.18);
+  background: linear-gradient(180deg, rgba(13, 92, 99, 0.06), rgba(255, 255, 255, 0.86));
+}
+.welcome-title {
+  margin: 6px 0 8px;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+}
+.welcome-cols {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin: 20px 0;
+}
+.welcome-block h3 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+.welcome-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 8px;
+  line-height: 1.5;
+}
+.welcome-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.welcome-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  line-height: 1.5;
+}
+.welcome-step-num {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(13, 92, 99, 0.12);
+  color: #0d5c63;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.welcome-perms {
+  margin: 4px 0 20px;
+  max-width: 46rem;
+}
+.welcome-cta {
+  width: auto;
+  min-width: 240px;
+}
+
+/* Setup checklist */
+.checklist-panel {
+  border-color: rgba(28, 124, 84, 0.2);
+  background: linear-gradient(180deg, rgba(28, 124, 84, 0.07), rgba(255, 255, 255, 0.86));
+}
+.checklist-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.checklist-head h2 {
+  margin: 4px 0 0;
+}
+.checklist {
+  list-style: none;
+  margin: 18px 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.checklist-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(19, 33, 43, 0.08);
+  background: rgba(255, 255, 255, 0.7);
+}
+.checklist-step.is-current {
+  border-color: rgba(13, 92, 99, 0.3);
+  background: rgba(13, 92, 99, 0.08);
+  font-weight: 600;
+}
+.checklist-step.is-todo {
+  opacity: 0.7;
+}
+.checklist-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.checklist-step.is-done .checklist-mark {
+  background: rgba(28, 124, 84, 0.15);
+  color: #1c7c54;
+}
+.checklist-step.is-current .checklist-mark {
+  background: rgba(13, 92, 99, 0.16);
+  color: #0d5c63;
+}
+.checklist-step.is-todo .checklist-mark {
+  background: rgba(19, 33, 43, 0.06);
+  color: #6a7b86;
+}
+.checklist-foot {
+  margin: 0;
+}
+
+/* Inline text-style button (e.g. "Download example CSV") */
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #0d5c63;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}

@@ -242,12 +242,25 @@ export function buildScanSummary(summary) {
   return parts.join(" ");
 }
 
+// Obituary URLs come from scraped feeds (untrusted), so only render them into an
+// href when the scheme is http(s) — blocks a javascript:/data: URI riding in as
+// a clickable link (XSS).
+function safeHttpUrl(url) {
+  return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+}
+
+// Owner profile links use the app's own lli: scheme; allow that plus http(s),
+// still blocking dangerous schemes.
+function safeOwnerUrl(url) {
+  return typeof url === "string" && /^(https?:\/\/|lli:)/i.test(url) ? url : null;
+}
+
 function buildOwnerLink(lead) {
-  return lead?.owner_profile_url ?? null;
+  return safeOwnerUrl(lead?.owner_profile_url ?? null);
 }
 
 function buildObituaryLink(lead) {
-  return lead?.obituary_raw_url ?? lead?.obituary?.url ?? null;
+  return safeHttpUrl(lead?.obituary_raw_url ?? lead?.obituary?.url ?? null);
 }
 
 function LeadConfidenceCard({ lead }) {
@@ -1023,7 +1036,7 @@ export default function DashboardPage() {
               <ul className="results-list">
                 {(status?.deliveries ?? []).slice(0, 5).map((delivery) => {
                   const summary = delivery.summary ?? {};
-                  const obituaryUrl = delivery.obituary_url ?? summary.obituary_url ?? null;
+                  const obituaryUrl = safeHttpUrl(delivery.obituary_url ?? summary.obituary_url ?? null);
                   const score = summary.match_score;
                   return (
                     <li key={delivery.id}>

@@ -1,6 +1,8 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
 import MatchExplainabilityCard from "../components/MatchExplainabilityCard";
+import SetupChecklist from "../components/SetupChecklist";
+import WelcomePanel from "../components/WelcomePanel";
 import { getRequiredServiceBaseUrl, resolveServiceBaseUrl } from "../runtimeConfig";
 
 const INITIAL_FORM = {
@@ -81,6 +83,20 @@ function parseOwnersCsv(text) {
     owners.push(owner);
   }
   return owners;
+}
+
+// Hand the broker a correctly-shaped starter file so the CSV import "just works".
+function downloadExampleOwnersCsv() {
+  const csv = "name,county,state\nJane Landowner,Boone,IA\nJohn Farmer,Carroll,IA\n";
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "land-legacy-owners-example.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function formatColumnSummary(mapping, lliFields = []) {
@@ -230,7 +246,9 @@ export function buildScanSummary(summary) {
     `Scanned recent Iowa obituaries against your ${owners} owner${owners === 1 ? "" : "s"} — found ${found} match${found === 1 ? "" : "es"}.`,
   ];
   if (found === 0) {
-    parts.push("No new leads this run.");
+    parts.push(
+      "No new leads this run. This matches Iowa land owners — check that your owners have a county and state.",
+    );
   } else if (created > 0) {
     parts.push(`Delivered ${created} new lead${created === 1 ? "" : "s"} to your board.`);
   } else {
@@ -403,6 +421,16 @@ export default function DashboardPage() {
   // handler that could fire after unmount.
   const readinessDetailsRef = useRef(null);
   const setupDetailsRef = useRef(null);
+  const [checklistDismissed, setChecklistDismissed] = useState(false);
+
+  function startMondayConnect() {
+    const crmAdapterBaseUrl = resolveServiceBaseUrl("crmAdapterBaseUrl");
+    if (crmAdapterBaseUrl) {
+      window.location.href = `${crmAdapterBaseUrl}/auth/login`;
+    } else {
+      setError("Portal is missing the CRM adapter URL; cannot start the Monday connection.");
+    }
+  }
 
   async function refreshDashboard(skipAutoProvision = false) {
     setLoading(true);
@@ -726,7 +754,6 @@ export default function DashboardPage() {
   const latestLead = lastRunSummary?.leads?.[0] ?? null;
   const crmFields = fieldCatalog.crm_fields ?? [];
   const lliFields = fieldCatalog.lli_fields ?? [];
-  const crmLinkBaseUrl = resolveServiceBaseUrl("crmAdapterBaseUrl");
   const mondayConnected = Boolean(validation?.capabilities?.token_present);
   const nextStep = describeNextStep({
     loading,
@@ -736,12 +763,6 @@ export default function DashboardPage() {
     canStartScan: Boolean(validation?.can_start_scan),
     deliveryCount,
   });
-  const justConnected = useMemo(
-    () =>
-      typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("connected") === "1",
-    [],
-  );
   // Decide the initial expanded/collapsed state of Setup + readiness ONCE, after
   // the first fully-settled load (status + validation both present). Doing it once
   // — rather than re-deriving each render — avoids the transient where status or
@@ -761,6 +782,12 @@ export default function DashboardPage() {
       readinessDetailsRef.current.open = scanBlocked;
     }
   }, [loading, status, validation, mondayConnected, scanBlocked]);
+
+  // First-run activation checklist: shown while still onboarding (connected, no
+  // scans yet, not dismissed). It replaces the standalone "connected" banner and
+  // the next-step cue during this window.
+  const hasScanned = (status?.scan_runs?.length ?? 0) > 0;
+  const showChecklist = !loading && mondayConnected && !hasScanned && !checklistDismissed;
 
   return (
     <main className="page dashboard-page" aria-label="Obituary intelligence dashboard">
@@ -783,55 +810,34 @@ export default function DashboardPage() {
             ) : null}
           </p>
         </div>
-        <div className="hero-metrics">
-          <div className="metric-chip">
-            <span>Obituaries scanned</span>
-            <strong>{pipelineMetrics?.totals?.obituaries != null ? formatCount(pipelineMetrics.totals.obituaries) : "—"}</strong>
+        {mondayConnected ? (
+          <div className="hero-metrics">
+            <div className="metric-chip">
+              <span>Obituaries scanned</span>
+              <strong>{pipelineMetrics?.totals?.obituaries != null ? formatCount(pipelineMetrics.totals.obituaries) : "—"}</strong>
+            </div>
+            <div className="metric-chip">
+              <span>Leads delivered</span>
+              <strong>{formatCount(deliveryCount)}</strong>
+            </div>
+            <div className="metric-chip">
+              <span>Last scan</span>
+              <strong>{lastScanAt ? formatRelativeTime(lastScanAt) ?? "—" : "No scans yet"}</strong>
+            </div>
           </div>
-          <div className="metric-chip">
-            <span>Leads delivered</span>
-            <strong>{formatCount(deliveryCount)}</strong>
-          </div>
-          <div className="metric-chip">
-            <span>Last scan</span>
-            <strong>{lastScanAt ? formatRelativeTime(lastScanAt) ?? "—" : "No scans yet"}</strong>
-          </div>
-        </div>
+        ) : null}
       </section>
 
-      {justConnected ? (
-        <section className="panel success-panel" role="status">
-          <p>
-            ✅ Monday.com connected.{" "}
-            {autoProvisioned && sourceBoard
-              ? "We set everything up for you — detected your owner board, built your “Land Legacy Leads” board, and mapped the fields. Just run a scan."
-              : autoProvisioned
-                ? "We built your “Land Legacy Leads” board and mapped the fields. We couldn’t auto-detect a landowner board — import a CSV or pick one in Setup below."
-                : "Open Setup below to import your owners, then run a scan."}
-          </p>
-        </section>
-      ) : null}
+      {!loading && !mondayConnected ? <WelcomePanel onConnect={startMondayConnect} /> : null}
 
-      {!loading && !mondayConnected ? (
-        <section className="panel connect-panel">
-          <h2>Step 1 — Connect your Monday.com</h2>
-          <p className="lede">
-            Authorize LLI to read your owner board and deliver scored leads back into Monday.
-            You only do this once.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              if (crmLinkBaseUrl) {
-                window.location.href = `${crmLinkBaseUrl}/auth/login`;
-              } else {
-                setError("Portal is missing the CRM adapter URL; cannot start the Monday connection.");
-              }
-            }}
-          >
-            Connect Monday
-          </button>
-        </section>
+      {showChecklist ? (
+        <SetupChecklist
+          sourceBoard={sourceBoard}
+          hasBoard={Boolean(status?.board)}
+          fieldsMapped={!scanBlocked}
+          hasScanned={hasScanned}
+          onDismiss={() => setChecklistDismissed(true)}
+        />
       ) : null}
 
       {error ? (
@@ -1126,9 +1132,16 @@ export default function DashboardPage() {
           <section className="setup-item">
             <h3>Import your owners</h3>
             <p className="subtle">
-              Upload a CSV of your landowners to create your Monday <strong>Clients</strong> board
-              automatically — no manual data entry. Use a header row with a <code>name</code> column
-              (plus optional <code>county</code> and <code>state</code> columns).
+              No owner board yet? Upload a CSV and we&apos;ll create your Monday{" "}
+              <strong>Clients</strong> board for you — no manual data entry. Use a header row with a{" "}
+              <code>name</code> column, plus <code>county</code> and <code>state</code> (recommended
+              so leads match).
+            </p>
+            <p className="subtle">
+              <button type="button" className="link-button" onClick={downloadExampleOwnersCsv}>
+                ⬇ Download example CSV
+              </button>{" "}
+              to see the exact format.
             </p>
             <form onSubmit={handleImportOwners} className="import-form">
               <input type="file" name="ownersCsv" accept=".csv,text/csv" />

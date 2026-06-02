@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import DashboardPage from "./pages/DashboardPage";
+import WelcomePage from "./pages/WelcomePage";
 
 export default function App() {
   return (
@@ -10,6 +11,8 @@ export default function App() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/login" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<DashboardPage />} />
+      {/* Shareable getting-started page for a brand-new broker. */}
+      <Route path="/welcome" element={<WelcomePage />} />
     </Routes>
   );
 }

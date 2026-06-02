@@ -42,9 +42,10 @@ test("buildScanSummary makes the all-duplicate case explicit", () => {
 });
 
 test("buildScanSummary handles zero matches and surfaces failures", () => {
-  expect(buildScanSummary({ owner_count: 2, lead_count: 0, delivery_summary: { created: 0, failed: 0 } })).toMatch(
-    /found 0 matches\. No new leads this run\./,
-  );
+  const zeroMatch = buildScanSummary({ owner_count: 2, lead_count: 0, delivery_summary: { created: 0, failed: 0 } });
+  expect(zeroMatch).toMatch(/found 0 matches\. No new leads this run\./);
+  // Zero-match should nudge toward the likely cause (Iowa + county/state).
+  expect(zeroMatch).toMatch(/county and state/i);
   expect(
     buildScanSummary({ owner_count: 2, lead_count: 2, delivery_summary: { created: 1, failed: 1 } }),
   ).toMatch(/1 failed to deliver\./);

@@ -14,9 +14,10 @@ straight to **https://lli.jordandamhof.com** to begin.
 
 ## Getting started — 3 steps
 
-1. **Connect Monday.** Open the portal and click **Connect Monday**, then authorize the
-   "LLI Lead Engine" app. *(You only do this once.)* We ask Monday for permission to read your
-   boards and to create the leads board — nothing else.
+1. **Install + connect Monday.** First open the **install link** in the email (it adds the
+   "LLI Lead Engine" app to your Monday account), and click **Install**. Then open the portal,
+   click **Connect Monday**, and authorize the app. *(You only do this once.)* We ask Monday for
+   permission to read your boards and to create the leads board — nothing else.
 2. **We set everything up for you.** On that first connected load the app automatically:
    - finds the board in your workspace that holds your landowners (by its columns — county,
      state, acres, parcel, operator, etc.);
@@ -47,6 +48,9 @@ leads keep arriving with no action from you.
   from** and choose the right board.
 - **"No owner board was found."** Use **Import your owners** in Setup to upload a CSV; we'll
   build a `Clients` board from it.
+- **"This app is private and cannot be installed in your account."** You skipped the install
+  step. Open the **install link** from the email first, click **Install**, then return to the
+  portal and click **Connect Monday**.
 - **Anything else:** just reply to the email that sent you here.
 
 ---
@@ -54,6 +58,25 @@ leads keep arriving with no action from you.
 ## Operator notes (Jordan)
 
 Technical/runbook detail for the person running the pilot — not needed by Dave.
+
+**Monday app distribution — REQUIRED before any external account (Dave) can connect.** A private
+app shows *"This app is private and cannot be installed in your account"* on the OAuth authorize
+screen for any account that hasn't installed it. To fix, in the **Developer Center** (monday.com →
+profile picture → **Developers**), open **LLI Lead Engine** (client_id `7c11d0d059b6de1f6ab3f5563f81ba4d`):
+
+1. **Manage → App versions** — promote the current version to **Live** (draft versions can't be
+   shared). If it's already Live, leave it.
+2. **Distribute → Share** — accept the developer terms, then either:
+   - **Share App** → copy the public **shareable install URL** (any Monday user can install), or
+   - **Share with specific monday accounts** → enter Whitaker's Monday account URL (only they can
+     install).
+3. Send Dave that **install URL**. He opens it → **Install** → then **Connect Monday** in the
+   portal. (Install-first is the supported path; the authorize URL also sets
+   `force_install_if_needed=true` so the portal Connect button can trigger install on its own, but
+   install-first avoids relying on the OAuth state surviving Monday's install redirect.)
+
+After Dave connects, **his token replaces the stored Monday token in KV** (single-tenant pilot by
+design) — Jordan's own dashboard view then runs against Dave's Monday account.
 
 **Live services (Vercel):** portal `https://lli.jordandamhof.com`, crm-adapter
 `https://crm.jordandamhof.com` (Monday OAuth callback `/auth/callback`), lead-engine

@@ -13,6 +13,9 @@ describe("MondayClient", () => {
 
     expect(url).toContain("client_id=client-id");
     expect(url).toContain("state=state-1");
+    // Private app: external accounts must be routed through install-on-authorize
+    // or they hit "This app is private and cannot be installed in your account".
+    expect(url).toContain("force_install_if_needed=true");
   });
 
   it("retries 429 responses up to 3 times", async () => {

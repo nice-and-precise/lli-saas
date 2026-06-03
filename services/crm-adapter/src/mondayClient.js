@@ -36,6 +36,14 @@ class MondayClient {
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
       state,
+      // The app is private (not on the marketplace). Without this flag, a user
+      // whose account has not installed the app dead-ends on Monday's
+      // "This app is private and cannot be installed in your account" screen.
+      // force_install_if_needed sends them through Monday's install flow first,
+      // then resumes the OAuth authorize. Belt-and-suspenders: the supported
+      // path is install-first via the app Share URL, but this lets the portal
+      // "Connect Monday" button work even when the app isn't pre-installed.
+      force_install_if_needed: "true",
     });
 
     return `https://auth.monday.com/oauth2/authorize?${params.toString()}`;

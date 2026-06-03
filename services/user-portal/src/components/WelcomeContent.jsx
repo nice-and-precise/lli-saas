@@ -49,6 +49,11 @@ export default function WelcomeContent({ onConnect, ctaLabel = "Connect Monday" 
         <strong>create the leads board</strong>. Setup takes about a minute, and you only do it
         once.
       </p>
+      <p className="welcome-perms subtle">
+        First time? Open the <strong>install link</strong> we emailed you and click{" "}
+        <strong>Install</strong> first. If Monday says the app is private, that just means the
+        install step was skipped — install it, then come back and connect.
+      </p>
 
       {onConnect ? (
         <button type="button" className="primary-action-button welcome-cta" onClick={onConnect}>
